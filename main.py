@@ -1,12 +1,12 @@
-import boto3
 import inquirer
+import sys
 from .actions import create_instance, list_instances, terminate_instance, stop_instance, start_instance, check_credentials
 
 
 def main():
     if not check_credentials():
         print("AWS credentials are not set. Please export AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, then restart script")
-        exit
+        sys.exit(1)
 
     questions = [
         inquirer.List('action',
