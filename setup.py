@@ -17,7 +17,7 @@ setup(
     python_requires='>=3.10',
     entry_points={
         'console_scripts': [
-            'your-script-name = main:main',
+            'ec2-manager=ec2-manager.main:main',
         ],
     },
     classifiers=[
