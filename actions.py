@@ -2,7 +2,7 @@ import boto3
 import inquirer
 import os
 from botocore.exceptions import ClientError, NoCredentialsError, EndpointConnectionError
-from api import *
+from .api import fetch_security_groups, fetch_subnets, fetch_vpcs
 
 def create_instance():
     try:
@@ -49,14 +49,26 @@ def create_instance():
     except EndpointConnectionError:
         print("Could not connect to the endpoint. Please check your network.")
 
-
 def list_instances():
     try:
         ec2 = boto3.client('ec2')
         instances = ec2.describe_instances()
         for reservation in instances['Reservations']:
             for instance in reservation['Instances']:
-                print("Instance ID: {}, State: {}".format(instance['InstanceId'], instance['State']['Name']))
+                # Instance ID
+                instance_id = instance['InstanceId']
+
+                # Private IP address
+                private_ip = instance.get('PrivateIpAddress', 'N/A')
+
+                # Name tag - Not all instances have a 'Name' tag, so provide a default value
+                name = 'No Name'
+                for tag in instance.get('Tags', []):
+                    if tag['Key'] == 'Name':
+                        name = tag['Value']
+                        break
+                
+                print(f"Instance ID: {instance_id}, Name: {name}, Private IP: {private_ip}")
     except NoCredentialsError:
         print("Credentials not available.")
     except ClientError as e:

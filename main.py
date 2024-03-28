@@ -1,6 +1,6 @@
 import boto3
 import inquirer
-from actions import *
+from .actions import create_instance, list_instances, terminate_instance, stop_instance, start_instance, check_credentials
 
 
 def main():
@@ -21,7 +21,9 @@ def main():
         if action == 'Create':
             create_instance()
         elif action == 'List':
+            print('=======================================================================')
             list_instances()
+            print('=======================================================================')
         elif action == 'Terminate':
             terminate_instance()
         elif action == 'Stop':
