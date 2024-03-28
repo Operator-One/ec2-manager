@@ -2,10 +2,15 @@ import boto3
 import inquirer
 from actions import *
 
+
 def main():
+    if not check_credentials():
+        print("AWS credentials are not set. Please export AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, then restart script")
+        exit
+
     questions = [
         inquirer.List('action',
-                      message="What do you want to do?",
+                      message="Select an action you would like to take...",
                       choices=['Create', 'List', 'Terminate', 'Stop', 'Start'],
                       ),
     ]
