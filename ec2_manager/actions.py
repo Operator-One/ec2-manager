@@ -61,6 +61,9 @@ def list_instances():
                 # Private IP address
                 private_ip = instance.get('PrivateIpAddress', 'N/A')
 
+                # Instance State
+                instance_state = instance['State']['Name']
+
                 # Name tag - Not all instances have a 'Name' tag, so provide a default value
                 name = 'No Name'
                 for tag in instance.get('Tags', []):
@@ -68,7 +71,7 @@ def list_instances():
                         name = tag['Value']
                         break
                 
-                print(f"Instance ID: {instance_id}, Name: {name}, Private IP: {private_ip}")
+                print(f"Instance ID: {instance_id}, Name: {name}, Private IP: {private_ip}, State: {instance_state}")
     except NoCredentialsError:
         print("Credentials not available.")
     except ClientError as e:

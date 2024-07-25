@@ -11,7 +11,7 @@ def main():
     questions = [
         inquirer.List('action',
                       message="Select an action you would like to take...",
-                      choices=['Create', 'List', 'Terminate', 'Stop', 'Start'],
+                      choices=['Create', 'List', 'Terminate', 'Stop', 'Start', 'Exit ec2-manager'],
                       ),
     ]
     try:
@@ -30,6 +30,8 @@ def main():
             stop_instance()
         elif action == 'Start':
             start_instance()
+        elif action == 'Exit ec2-manager':
+            exit()
     except TypeError:
         print("Operation was cancelled or an invalid option was selected.")
 

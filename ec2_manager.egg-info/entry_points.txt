@@ -1,3 +1,0 @@
-[console_scripts]
-ec2-manager = main.py:main
-
