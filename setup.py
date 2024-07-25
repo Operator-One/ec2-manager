@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='Ec2Manager',
+    name='ec2_manager',
     version='0.1.0',
     author='Operator-One',
-    author_email='cullen.guimond@guinet.us',
+    author_email='cullen.guimond@gmail.com',
     description='Allows you to manage and create resources in AWS EC2',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
@@ -16,7 +16,7 @@ setup(
     ],
 entry_points={
     'console_scripts': [
-        'ec2-manager=ec2_manager.main:main',
+        'ec2-manager=main.py:main',
     ],
     },
     classifiers=[
