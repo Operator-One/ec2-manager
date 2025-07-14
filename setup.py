@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from setuptools import setup, find_packages
 
 setup(
-    name="ec2_manager",
+    name="ec2-manager",
     version="1.12.0",
     description="A CLI tool to manage and view AWS EC2 instances and Auto Scaling Groups",
     long_description=open("README.md").read(),
