@@ -15,4 +15,4 @@ A command-line interface (CLI) tool to manage and view AWS EC2 instances and Aut
 ## Installation
 1. Install the package using pip:
    ```bash
-   pip install aws-cli-tool
+   pip install ec2-manager
