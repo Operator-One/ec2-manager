@@ -17,7 +17,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "awscli=awscli.main:main",
+            "ec2-manager=ec2_manager.main:main",
         ],
     },
     classifiers=[

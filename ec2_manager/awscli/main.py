@@ -118,7 +118,8 @@ def fetch_asg_details(asg_client):
                 'MaxSize': asg.get('MaxSize'),
                 'DesiredCapacity': asg.get('DesiredCapacity'),
                 'Instances': [instance['InstanceId'] for instance in asg.get('Instances', [])],
-                'Tags': {tag['Key']: tag['Value'] for tag in asg.get('Tags', [])]
+                # FIX: Corrected a syntax error here. Removed the extra ']' at the end of the line.
+                'Tags': {tag['Key']: tag['Value'] for tag in asg.get('Tags', [])}
             }
             asgs.append(asg_info)
         
@@ -164,11 +165,13 @@ def control_ec2_instance(ec2_client, asg_client, session):
         elif action == 'stop':
             ec2_client.stop_instances(InstanceIds=[instance_id])
             print(f"Stopping instance {instance_id}...")
-            ec2_client.get_waiter('instance_stopEchoes of Eternity stopped').wait(InstanceIds=[instance_id])
+            # FIX: Corrected the waiter name from 'instance_stopEchoes of Eternity stopped' to 'instance_stopped'.
+            ec2_client.get_waiter('instance_stopped').wait(InstanceIds=[instance_id])
             print(f"Instance {instance_id} is now stopped.")
         
         elif action == 'terminate' and not asg_name:
-            confirm = session.prompt(HTML('<ansiblue>Confirm termination of {instance_id} (yes/no):</ansiblue> ')).lower()
+            # FIX: Corrected the prompt to use an f-string so the instance_id is displayed.
+            confirm = session.prompt(HTML(f'<ansiblue>Confirm termination of {instance_id} (yes/no):</ansiblue> ')).lower()
             if confirm == 'yes':
                 ec2_client.terminate_instances(InstanceIds=[instance_id])
                 print(f"Terminating instance {instance_id}...")
@@ -307,7 +310,7 @@ def display_instances(instances):
         print(f"  Private IP: {instance['PrivateIpAddress']}")
         print(f"  Public IP: {instance['PublicIpAddress']}")
         print(f"  Launch Time: {instance['LaunchTime']}")
-        print(f"  Tags: {instance['Tags']}")
+        print(f"  Tags: {json.dumps(instance['Tags'])}")
         print(f"  Security Groups: {instance['SecurityGroups']}")
         print(f"  Subnet: {instance['SubnetId']}")
         print(f"  VPC: {instance['VpcId']}")
@@ -324,7 +327,7 @@ def display_asgs(asgs):
         print(f"  Max Size: {asg['MaxSize']}")
         print(f"  Desired Capacity: {asg['DesiredCapacity']}")
         print(f"  Instances: {asg['Instances']}")
-        print(f"  Tags: {asg['Tags']}")
+        print(f"  Tags: {json.dumps(asg['Tags'])}")
         print("-" * 50)
 
 def get_ec2_filters(ec2_client):
