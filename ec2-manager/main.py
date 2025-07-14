@@ -2,16 +2,17 @@ import sys
 import boto3
 import json
 import time
+import re
 from botocore.exceptions import ClientError, NoCredentialsError, InvalidClientTokenId
+from inquirerpy import inquirer
+from inquirerpy.base.control import Choice
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import WordCompleter
-from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.formatted_text import HTML
 
-# List of valid AWS regions (including standard and GovCloud)
+# Valid AWS regions (including GovCloud)
 VALID_AWS_REGIONS = [
     'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
-    'us-gov-west-1', 'us-gov-east-1',  # GovCloud regions
+    'us-gov-west-1', 'us-gov-east-1',
     'af-south-1', 'ap-east-1', 'ap-south-1', 'ap-northeast-1', 'ap-northeast-2', 'ap-northeast-3',
     'ap-southeast-1', 'ap-southeast-2', 'ap-southeast-3',
     'ca-central-1', 'eu-central-1', 'eu-west-1', 'eu-west-2', 'eu-west-3',
@@ -25,26 +26,24 @@ def check_python_version():
         print(f"Error: This tool requires Python 3.6 or higher. You are using Python {sys.version_info.major}.{sys.version_info.minor}.")
         sys.exit(1)
 
-def prompt_for_credentials(session):
-    """Prompt user for AWS credentials and region."""
+def prompt_for_credentials():
+    """Prompt user for AWS credentials using prompt_toolkit."""
+    session = PromptSession(multiline=False)
     print("Please enter your AWS credentials (obtained from your STS portal).")
     access_key = session.prompt(HTML('<ansiblue>AWS Access Key ID:</ansiblue> ')).strip()
     secret_key = session.prompt(HTML('<ansiblue>AWS Secret Access Key:</ansiblue> '), is_password=True).strip()
     session_token = session.prompt(HTML('<ansiblue>AWS Session Token (optional, press Enter to skip):</ansiblue> ')).strip()
-    region = prompt_for_region(session)
+    region = prompt_for_region()
     return access_key, secret_key, session_token or None, region
 
-def prompt_for_region(session):
-    """Prompt user for AWS region with validation."""
-    region_completer = WordCompleter(VALID_AWS_REGIONS, ignore_case=True)
-    while True:
-        region = session.prompt(
-            HTML('<ansiblue>Enter AWS region (e.g., us-east-1, us-gov-west-1):</ansiblue> '),
-            completer=region_completer
-        ).strip()
-        if region in VALID_AWS_REGIONS:
-            return region
-        print(f"Invalid region. Please choose from: {', '.join(VALID_AWS_REGIONS)}")
+def prompt_for_region():
+    """Prompt user for AWS region with validation using inquirerpy."""
+    region = inquirer.select(
+        message="Select AWS region:",
+        choices=VALID_AWS_REGIONS,
+        default='us-east-1'
+    ).execute()
+    return region
 
 def validate_aws_credentials(access_key, secret_key, session_token, region):
     """Validate AWS credentials and connectivity using STS."""
@@ -86,14 +85,14 @@ def fetch_ec2_instances(ec2_client, filters=None):
         for reservation in response['Reservations']:
             for instance in reservation['Instances']:
                 instance_info = {
-                    'InstanceId': instance.get('InstanceId'),
-                    'InstanceType': instance.get('InstanceType'),
-                    'State': instance.get('State', {}).get('Name'),
+                    'InstanceId': instance.get('InstanceId', 'N/A'),
+                    'InstanceType': instance.get('InstanceType', 'N/A'),
+                    'State': instance.get('State', {}).get('Name', 'N/A'),
                     'PrivateIpAddress': instance.get('PrivateIpAddress', 'N/A'),
                     'PublicIpAddress': instance.get('PublicIpAddress', 'N/A'),
-                    'LaunchTime': instance.get('LaunchTime').isoformat() if instance.get('LaunchTime') else 'N/A',
-                    'Tags': {tag['Key']: tag['Value'] for tag in instance.get('Tags', [])},
-                    'SecurityGroups': [sg['GroupName'] for sg in instance.get('SecurityGroups', [])],
+                    'LaunchTime': instance.get('LaunchTime', 'N/A').isoformat() if instance.get('LaunchTime') else 'N/A',
+                    'Tags': {tag['Key']: tag['Value'] for tag in instance.get('Tags', []) if 'Key' in tag and 'Value' in tag},
+                    'SecurityGroups': [sg['GroupId'] for sg in instance.get('SecurityGroups', [])],
                     'SubnetId': instance.get('SubnetId', 'N/A'),
                     'VpcId': instance.get('VpcId', 'N/A')
                 }
@@ -105,21 +104,37 @@ def fetch_ec2_instances(ec2_client, filters=None):
         print(f"Error fetching EC2 instances: {e}")
         return []
 
-def fetch_asg_details(asg_client):
-    """Fetch all Auto Scaling Groups."""
+def search_ec2_instances(ec2_client, search_term, search_by='tag:Name'):
+    """Search running EC2 instances by Name tag or private IP."""
     try:
-        response = asg_client.describe_auto_scaling_groups()
+        filters = [{'Name': 'instance-state-name', 'Values': ['running']}]
+        if search_by == 'tag:Name':
+            filters.append({'Name': 'tag:Name', 'Values': [f'*{search_term}*']})
+        elif search_by == 'private-ip-address':
+            filters.append({'Name': 'private-ip-address', 'Values': [f'*{search_term}*']})
+        
+        return fetch_ec2_instances(ec2_client, filters)
+    except ClientError as e:
+        print(f"Error searching EC2 instances: {e}")
+        return []
+
+def fetch_asg_details(asg_client, asg_name=None):
+    """Fetch all Auto Scaling Groups or a specific one."""
+    try:
+        if asg_name:
+            response = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name])
+        else:
+            response = asg_client.describe_auto_scaling_groups()
         asgs = []
         
         for asg in response['AutoScalingGroups']:
             asg_info = {
-                'AutoScalingGroupName': asg.get('AutoScalingGroupName'),
-                'MinSize': asg.get('MinSize'),
-                'MaxSize': asg.get('MaxSize'),
-                'DesiredCapacity': asg.get('DesiredCapacity'),
+                'AutoScalingGroupName': asg.get('AutoScalingGroupName', 'N/A'),
+                'MinSize': asg.get('MinSize', 0),
+                'MaxSize': asg.get('MaxSize', 0),
+                'DesiredCapacity': asg.get('DesiredCapacity', 0),
                 'Instances': [instance['InstanceId'] for instance in asg.get('Instances', [])],
-                # FIX: Corrected a syntax error here. Removed the extra ']' at the end of the line.
-                'Tags': {tag['Key']: tag['Value'] for tag in asg.get('Tags', [])}
+                'Tags': {tag['Key']: tag['Value'] for tag in asg.get('Tags', []) if 'Key' in tag and 'Value' in tag}
             }
             asgs.append(asg_info)
         
@@ -140,86 +155,235 @@ def is_instance_in_asg(asg_client, instance_id):
         print(f"Error checking ASG membership for instance {instance_id}: {e}")
         return None
 
-def control_ec2_instance(ec2_client, asg_client, session):
+def create_ec2_instance(ec2_client):
+    """Create a new EC2 instance with user-specified parameters."""
+    try:
+        # Fetch available AMIs (latest Amazon Linux 2 as default)
+        response = ec2_client.describe_images(
+            Filters=[
+                {'Name': 'name', 'Values': ['amzn2-ami-hvm-*']},
+                {'Name': 'architecture', 'Values': ['x86_64']}
+            ],
+            Owners=['amazon']
+        )
+        amis = sorted(response['Images'], key=lambda x: x['CreationDate'], reverse=True)
+        ami_choices = [Choice(ami['ImageId'], name=f"{ami['Name']} ({ami['ImageId']})") for ami in amis[:5]]
+        ami_id = inquirer.select(
+            message="Select AMI:",
+            choices=ami_choices
+        ).execute()
+
+        # Fetch instance types
+        instance_types = ['t2.micro', 't3.micro', 't3.small', 'm5.large']
+        instance_type = inquirer.select(
+            message="Select instance type:",
+            choices=instance_types,
+            default='t2.micro'
+        ).execute()
+
+        # Fetch key pairs
+        response = ec2_client.describe_key_pairs()
+        key_pairs = [kp['KeyName'] for kp in response['KeyPairs']]
+        key_pair = inquirer.select(
+            message="Select key pair (or skip):",
+            choices=key_pairs + ['None'],
+            default='None'
+        ).execute()
+
+        # Fetch security groups
+        response = ec2_client.describe_security_groups()
+        security_groups = [sg['GroupId'] for sg in response['SecurityGroups']]
+        security_group = inquirer.select(
+            message="Select security group:",
+            choices=security_groups
+        ).execute()
+
+        # Fetch subnets
+        response = ec2_client.describe_subnets()
+        subnets = [subnet['SubnetId'] for subnet in response['Subnets']]
+        subnet_id = inquirer.select(
+            message="Select subnet:",
+            choices=subnets
+        ).execute()
+
+        # Optional Name tag
+        name_tag = inquirer.text(
+            message="Enter instance Name tag (optional, press Enter to skip):"
+        ).execute().strip()
+
+        # Create instance
+        instance_params = {
+            'ImageId': ami_id,
+            'InstanceType': instance_type,
+            'MinCount': 1,
+            'MaxCount': 1,
+            'SubnetId': subnet_id,
+            'SecurityGroupIds': [security_group]
+        }
+        if key_pair != 'None':
+            instance_params['KeyName'] = key_pair
+        if name_tag:
+            instance_params['TagSpecifications'] = [
+                {
+                    'ResourceType': 'instance',
+                    'Tags': [{'Key': 'Name', 'Value': name_tag}]
+                }
+            ]
+
+        response = ec2_client.run_instances(**instance_params)
+        instance_id = response['Instances'][0]['InstanceId']
+        print(f"Creating instance {instance_id}...")
+        ec2_client.get_waiter('instance_running').wait(InstanceIds=[instance_id])
+        print(f"Instance {instance_id} created and running.")
+        return instance_id
+    except ClientError as e:
+        print(f"Error creating EC2 instance: {e}")
+        return None
+
+def modify_ec2_instance(ec2_client, instance_id):
+    """Modify EC2 instance attributes (tags, security groups)."""
+    try:
+        # Fetch current instance details
+        instances = fetch_ec2_instances(ec2_client, {'instance-id': [instance_id]})
+        if not instances:
+            print(f"Instance {instance_id} not found.")
+            return
+        instance = instances[0]
+
+        action = inquirer.select(
+            message=f"Modify instance {instance_id}:",
+            choices=[
+                Choice("tags", name="Modify Tags"),
+                Choice("security_groups", name="Modify Security Groups"),
+                Choice("return", name="Return")
+            ]
+        ).execute()
+
+        if action == "tags":
+            current_tags = instance['Tags']
+            print(f"Current tags: {current_tags}")
+            new_name = inquirer.text(
+                message="Enter new Name tag (press Enter to keep current):",
+                default=current_tags.get('Name', '')
+            ).execute().strip()
+            if new_name:
+                ec2_client.create_tags(
+                    Resources=[instance_id],
+                    Tags=[{'Key': 'Name', 'Value': new_name}]
+                )
+                print(f"Updated Name tag for {instance_id} to '{new_name}'.")
+            else:
+                print("No changes made to tags.")
+
+        elif action == "security_groups":
+            # Fetch available security groups
+            response = ec2_client.describe_security_groups()
+            security_groups = [sg['GroupId'] for sg in response['SecurityGroups']]
+            new_sg = inquirer.select(
+                message="Select new security group:",
+                choices=security_groups
+            ).execute()
+            ec2_client.modify_instance_attribute(
+                InstanceId=instance_id,
+                SecurityGroups=[new_sg]
+            )
+            print(f"Updated security group for {instance_id} to {new_sg}.")
+
+        elif action == "return":
+            print("No modifications made.")
+    except ClientError as e:
+        print(f"Error modifying instance {instance_id}: {e}")
+
+def control_ec2_instance(ec2_client, asg_client, instance_id):
     """Control EC2 instance state (start, stop, terminate)."""
-    instance_id = session.prompt(HTML('<ansiblue>Enter EC2 Instance ID:</ansiblue> ')).strip()
-    
-    # Check if instance is in an ASG
     asg_name = is_instance_in_asg(asg_client, instance_id)
     if asg_name:
         print(f"Instance {instance_id} is part of Auto Scaling Group '{asg_name}'.")
-        action = session.prompt(HTML('<ansiblue>Choose action (start/stop/refresh in ASG/return):</ansiblue> ')).lower()
+        action = inquirer.select(
+            message="Choose action:",
+            choices=[
+                Choice("start", name="Start Instance"),
+                Choice("stop", name="Stop Instance"),
+                Choice("refresh", name="Refresh in ASG"),
+                Choice("return", name="Return")
+            ]
+        ).execute()
     else:
-        action = session.prompt(HTML('<ansiblue>Choose action (start/stop/terminate/return):</ansiblue> ')).lower()
+        action = inquirer.select(
+            message="Choose action:",
+            choices=[
+                Choice("start", name="Start Instance"),
+                Choice("stop", name="Stop Instance"),
+                Choice("terminate", name="Terminate Instance"),
+                Choice("return", name="Return")
+            ]
+        ).execute()
     
-    if action == 'return':
-        return
+    if action == "return":
+        return None
     
     try:
-        if action == 'start':
+        if action == "start":
             ec2_client.start_instances(InstanceIds=[instance_id])
             print(f"Starting instance {instance_id}...")
             ec2_client.get_waiter('instance_running').wait(InstanceIds=[instance_id])
             print(f"Instance {instance_id} is now running.")
-        
-        elif action == 'stop':
+        elif action == "stop":
             ec2_client.stop_instances(InstanceIds=[instance_id])
             print(f"Stopping instance {instance_id}...")
-            # FIX: Corrected the waiter name from 'instance_stopEchoes of Eternity stopped' to 'instance_stopped'.
             ec2_client.get_waiter('instance_stopped').wait(InstanceIds=[instance_id])
             print(f"Instance {instance_id} is now stopped.")
-        
-        elif action == 'terminate' and not asg_name:
-            # FIX: Corrected the prompt to use an f-string so the instance_id is displayed.
-            confirm = session.prompt(HTML(f'<ansiblue>Confirm termination of {instance_id} (yes/no):</ansiblue> ')).lower()
-            if confirm == 'yes':
+        elif action == "terminate" and not asg_name:
+            confirm = inquirer.confirm(
+                message=f"Confirm termination of {instance_id}?",
+                default=False
+            ).execute()
+            if confirm:
                 ec2_client.terminate_instances(InstanceIds=[instance_id])
                 print(f"Terminating instance {instance_id}...")
                 ec2_client.get_waiter('instance_terminated').wait(InstanceIds=[instance_id])
                 print(f"Instance {instance_id} is now terminated.")
             else:
                 print("Termination cancelled.")
-        
-        elif action == 'refresh' and asg_name:
-            print(f"Redirecting to ASG control panel for instance refresh in {asg_name}...")
-            # ASG refresh handled in ASG control panel
+        elif action == "refresh" and asg_name:
             return asg_name
         else:
             print("Invalid action or termination not allowed for ASG instances.")
-    
     except ClientError as e:
         print(f"Error performing action on instance {instance_id}: {e}")
+    return None
 
-def update_asg_capacity(asg_client, asg_name, desired_capacity):
-    """Update the desired capacity of an Auto Scaling Group."""
-    try:
-        asg_client.update_auto_scaling_group(
-            AutoScalingGroupName=asg_name,
-            DesiredCapacity=desired_capacity
-        )
-        print(f"Successfully updated {asg_name} desired capacity to {desired_capacity}")
-    except ClientError as e:
-        print(f"Error updating ASG {asg_name}: {e}")
-
-def modify_asg_properties(asg_client, session, asg_name):
+def modify_asg_properties(asg_client, asg_name):
     """Modify ASG properties (min/max/desired capacity)."""
-    print(f"Modifying Auto Scaling Group: {asg_name}")
     try:
-        min_size = int(session.prompt(HTML('<ansiblue>Enter new Min Size:</ansiblue> ')))
-        max_size = int(session.prompt(HTML('<ansiblue>Enter new Max Size:</ansiblue> ')))
-        desired_capacity = int(session.prompt(HTML('<ansiblue>Enter new Desired Capacity:</ansiblue> ')))
+        min_size = inquirer.number(
+            message="Enter new Min Size:",
+            min_allowed=0,
+            validate=lambda x: x >= 0
+        ).execute()
+        max_size = inquirer.number(
+            message="Enter new Max Size:",
+            min_allowed=min_size,
+            validate=lambda x: x >= min_size
+        ).execute()
+        desired_capacity = inquirer.number(
+            message="Enter new Desired Capacity:",
+            min_allowed=min_size,
+            max_allowed=max_size,
+            validate=lambda x: min_size <= x <= max_size
+        ).execute()
         
         asg_client.update_auto_scaling_group(
             AutoScalingGroupName=asg_name,
-            MinSize=min_size,
-            MaxSize=max_size,
-            DesiredCapacity=desired_capacity
+            MinSize=int(min_size),
+            MaxSize=int(max_size),
+            DesiredCapacity=int(desired_capacity)
         )
         print(f"Successfully updated ASG {asg_name} with Min: {min_size}, Max: {max_size}, Desired: {desired_capacity}")
     except (ValueError, ClientError) as e:
         print(f"Error modifying ASG {asg_name}: {e}")
 
-def refresh_asg_instance(asg_client, session, asg_name):
+def refresh_asg_instance(asg_client, asg_name):
     """Start an instance refresh for an Auto Scaling Group."""
     try:
         response = asg_client.start_instance_refresh(
@@ -233,7 +397,6 @@ def refresh_asg_instance(asg_client, session, asg_name):
         refresh_id = response['InstanceRefreshId']
         print(f"Started instance refresh for ASG {asg_name}. Refresh ID: {refresh_id}")
         
-        # Monitor refresh status
         while True:
             response = asg_client.describe_instance_refreshes(
                 AutoScalingGroupName=asg_name,
@@ -249,55 +412,6 @@ def refresh_asg_instance(asg_client, session, asg_name):
     except ClientError as e:
         print(f"Error refreshing instances in ASG {asg_name}: {e}")
 
-def asg_control_panel(asg_client, session, preselected_asg=None):
-    """ASG control panel for managing Auto Scaling Groups."""
-    asgs = fetch_asg_details(asg_client)
-    if not asgs:
-        print("No Auto Scaling Groups found.")
-        return
-    
-    if preselected_asg:
-        selected_asg = next((asg for asg in asgs if asg['AutoScalingGroupName'] == preselected_asg), None)
-        if not selected_asg:
-            print(f"ASG {preselected_asg} not found.")
-            return
-    else:
-        print("\nAvailable Auto Scaling Groups:")
-        for i, asg in enumerate(asgs, 1):
-            print(f"{i}. {asg['AutoScalingGroupName']}")
-        choice = session.prompt(HTML('<ansiblue>Select ASG number or name (or "return"):</ansiblue> ')).strip()
-        if choice.lower() == 'return':
-            return
-        try:
-            index = int(choice) - 1
-            selected_asg = asgs[index]
-        except (ValueError, IndexError):
-            selected_asg = next((asg for asg in asgs if asg['AutoScalingGroupName'] == choice), None)
-            if not selected_asg:
-                print("Invalid ASG selection.")
-                return
-    
-    asg_name = selected_asg['AutoScalingGroupName']
-    
-    asg_options = ['Modify ASG Properties', 'Refresh Instances', 'Return']
-    asg_completer = WordCompleter(asg_options, ignore_case=True)
-    
-    while True:
-        print(f"\n=== ASG Control Panel: {asg_name} ===")
-        for i, option in enumerate(asg_options, 1):
-            print(f"{i}. {option}")
-        
-        choice = session.prompt(HTML('<ansigreen>Select an option (1-3 or type option):</ansigreen> '), completer=asg_completer)
-        
-        if choice == '1' or choice.lower() == 'modify asg properties':
-            modify_asg_properties(asg_client, session, asg_name)
-        elif choice == '2' or choice.lower() == 'refresh instances':
-            refresh_asg_instance(asg_client, session, asg_name)
-        elif choice == '3' or choice.lower() == 'return':
-            break
-        else:
-            print("Invalid option. Please select 1-3 or type the option name.")
-
 def display_instances(instances):
     """Display EC2 instances in a formatted manner."""
     if not instances:
@@ -310,7 +424,7 @@ def display_instances(instances):
         print(f"  Private IP: {instance['PrivateIpAddress']}")
         print(f"  Public IP: {instance['PublicIpAddress']}")
         print(f"  Launch Time: {instance['LaunchTime']}")
-        print(f"  Tags: {json.dumps(instance['Tags'])}")
+        print(f"  Tags: {instance['Tags']}")
         print(f"  Security Groups: {instance['SecurityGroups']}")
         print(f"  Subnet: {instance['SubnetId']}")
         print(f"  VPC: {instance['VpcId']}")
@@ -327,49 +441,113 @@ def display_asgs(asgs):
         print(f"  Max Size: {asg['MaxSize']}")
         print(f"  Desired Capacity: {asg['DesiredCapacity']}")
         print(f"  Instances: {asg['Instances']}")
-        print(f"  Tags: {json.dumps(asg['Tags'])}")
+        print(f"  Tags: {asg['Tags']}")
         print("-" * 50)
 
-def get_ec2_filters(ec2_client):
-    """Return a dictionary of common EC2 filter names and example values."""
-    return {
-        'instance-state-name': ['running', 'stopped', 'pending', 'shutting-down', 'terminated', 'stopping'],
-        'instance-type': ['t2.micro', 't3.micro', 'm5.large', 'c5.xlarge'],
-        'tag:Name': ['*'],
-        'vpc-id': ['*'],
-        'subnet-id': ['*'],
-        'availability-zone': ['us-east-1a', 'us-east-1b', 'us-west-2a']
-    }
+def asg_control_panel(asg_client, preselected_asg=None):
+    """ASG control panel for viewing, searching, or modifying ASGs."""
+    if preselected_asg:
+        asgs = fetch_asg_details(asg_client, preselected_asg)
+        if not asgs:
+            print(f"ASG {preselected_asg} not found.")
+            return
+        selected_asg = asgs[0]
+    else:
+        action = inquirer.select(
+            message="Auto Scaling Group Menu:",
+            choices=[
+                Choice("view_all", name="View All ASGs"),
+                Choice("search", name="Search ASG by Name"),
+                Choice("return", name="Return")
+            ]
+        ).execute()
 
-def prompt_for_filters(session, filter_options):
-    """Prompt user to input filters for EC2 instances."""
-    filters = {}
-    print("Enter filters (e.g., 'instance-state-name: running' or leave blank to skip). Type 'done' when finished.")
+        if action == "view_all":
+            asgs = fetch_asg_details(asg_client)
+            display_asgs(asgs)
+            if not asgs:
+                return
+            asg_choices = [Choice(asg['AutoScalingGroupName'], name=f"{asg['AutoScalingGroupName']} (Instances: {len(asg['Instances'])})") for asg in asgs]
+            asg_choices.append(Choice("return", name="Return"))
+            selected_asg_name = inquirer.select(
+                message="Select ASG to modify (or return):",
+                choices=asg_choices
+            ).execute()
+            if selected_asg_name == "return":
+                return
+            selected_asg = next(asg for asg in asgs if asg['AutoScalingGroupName'] == selected_asg_name)
+
+        elif action == "search":
+            asg_name = inquirer.text(
+                message="Enter ASG name (partial match):"
+            ).execute().strip()
+            asgs = fetch_asg_details(asg_client)
+            matching_asgs = [asg for asg in asgs if asg_name.lower() in asg['AutoScalingGroupName'].lower()]
+            if not matching_asgs:
+                print(f"No ASGs found matching '{asg_name}'.")
+                return
+            display_asgs(matching_asgs)
+            asg_choices = [Choice(asg['AutoScalingGroupName'], name=f"{asg['AutoScalingGroupName']} (Instances: {len(asg['Instances'])})") for asg in matching_asgs]
+            asg_choices.append(Choice("return", name="Return"))
+            selected_asg_name = inquirer.select(
+                message="Select ASG to modify (or return):",
+                choices=asg_choices
+            ).execute()
+            if selected_asg_name == "return":
+                return
+            selected_asg = next(asg for asg in matching_asgs if asg['AutoScalingGroupName'] == selected_asg_name)
+
+        elif action == "return":
+            return
+
+    asg_name = selected_asg['AutoScalingGroupName']
     
     while True:
-        filter_input = session.prompt(HTML('<ansiblue>Filter (name:value or done):</ansiblue> '))
-        if filter_input.lower() == 'done':
+        action = inquirer.select(
+            message=f"ASG Control Panel: {asg_name}",
+            choices=[
+                Choice("modify", name="Modify ASG Properties"),
+                Choice("refresh", name="Refresh Instances"),
+                Choice("return", name="Return")
+            ]
+        ).execute()
+        
+        if action == "modify":
+            modify_asg_properties(asg_client, asg_name)
+        elif action == "refresh":
+            refresh_asg_instance(asg_client, asg_name)
+        elif action == "return":
             break
-        if ':' not in filter_input:
-            print("Invalid format. Use 'filter-name:value' (e.g., 'instance-state-name:running').")
-            continue
-        name, value = filter_input.split(':', 1)
-        name = name.strip()
-        value = value.strip()
-        if name in filter_options:
-            filters[name] = value.split(',') if ',' in value else value
-        else:
-            print(f"Invalid filter name. Choose from: {list(filter_options.keys())}")
+
+def refresh_asg_menu(asg_client):
+    """Menu to search for an ASG and initiate an instance refresh."""
+    asg_name = inquirer.text(
+        message="Enter ASG name (partial match):"
+    ).execute().strip()
+    asgs = fetch_asg_details(asg_client)
+    matching_asgs = [asg for asg in asgs if asg_name.lower() in asg['AutoScalingGroupName'].lower()]
+    if not matching_asgs:
+        print(f"No ASGs found matching '{asg_name}'.")
+        return
     
-    return filters
+    asg_choices = [Choice(asg['AutoScalingGroupName'], name=f"{asg['AutoScalingGroupName']} (Instances: {len(asg['Instances'])})") for asg in matching_asgs]
+    selected_asg_name = inquirer.select(
+        message="Select ASG to refresh:",
+        choices=asg_choices
+    ).execute()
+    
+    confirm = inquirer.confirm(
+        message=f"Start instance refresh for ASG {selected_asg_name}?",
+        default=True
+    ).execute()
+    if confirm:
+        refresh_asg_instance(asg_client, selected_asg_name)
+    else:
+        print("Refresh cancelled.")
 
 def main():
     # Check Python version
     check_python_version()
-    
-    # Set up prompt session with key bindings
-    bindings = KeyBindings()
-    session = PromptSession(multiline=False, key_bindings=bindings)
     
     # Try default credentials first
     boto3_session = None
@@ -377,12 +555,12 @@ def main():
         boto3_session = boto3.Session()
         sts_client = boto3_session.client('sts')
         response = sts_client.get_caller_identity()
-        region = prompt_for_region(session)
+        region = prompt_for_region()
         boto3_session = boto3.Session(region_name=region)
         print(f"AWS credentials validated. Connected as: {response['Arn']} in region {region}")
     except (NoCredentialsError, InvalidClientTokenId, ClientError):
         print("No valid AWS credentials found. Prompting for credentials...")
-        access_key, secret_key, session_token, region = prompt_for_credentials(session)
+        access_key, secret_key, session_token, region = prompt_for_credentials()
         boto3_session = validate_aws_credentials(access_key, secret_key, session_token, region)
         if not boto3_session:
             print("Exiting due to invalid credentials.")
@@ -392,45 +570,63 @@ def main():
     ec2_client = boto3_session.client('ec2')
     asg_client = boto3_session.client('autoscaling')
     
-    # Common EC2 filter options for user guidance
-    filter_options = get_ec2_filters(ec2_client)
-    
-    # Main menu options
-    menu_options = ['List EC2 Instances', 'List Auto Scaling Groups', 'Control EC2 Instance', 'ASG Control Panel', 'Exit']
-    completer = WordCompleter(menu_options, ignore_case=True)
-    
     while True:
-        print("\n=== AWS CLI Tool ===")
-        for i, option in enumerate(menu_options, 1):
-            print(f"{i}. {option}")
+        action = inquirer.select(
+            message="EC2 Manager CLI",
+            choices=[
+                Choice("view_running", name="View All Running Instances"),
+                Choice("search_running", name="Search Running Instances"),
+                Choice("create_ec2", name="Create EC2 Instance"),
+                Choice("modify_ec2", name="Modify EC2 Instance"),
+                Choice("modify_state", name="Modify Instance State"),
+                Choice("auto_scaling", name="Auto Scaling"),
+                Choice("refresh_asg", name="Refresh Instances"),
+                Choice("exit", name="Exit")
+            ]
+        ).execute()
         
-        choice = session.prompt(HTML('<ansigreen>Select an option (1-5 or type option):</ansigreen> '), completer=completer)
-        
-        if choice == '1' or choice.lower() == 'list ec2 instances':
-            print("\nFetching EC2 instances...")
-            filters = prompt_for_filters(session, filter_options)
-            instances = fetch_ec2_instances(ec2_client, filters)
+        if action == "view_running":
+            print("\nFetching all running EC2 instances...")
+            instances = fetch_ec2_instances(ec2_client, {'instance-state-name': 'running'})
             display_instances(instances)
         
-        elif choice == '2' or choice.lower() == 'list auto scaling groups':
-            print("\nFetching Auto Scaling Groups...")
-            asgs = fetch_asg_details(asg_client)
-            display_asgs(asgs)
+        elif action == "search_running":
+            search_by = inquirer.select(
+                message="Search by:",
+                choices=[
+                    Choice("tag:Name", name="Name Tag"),
+                    Choice("private-ip-address", name="Private IP Address")
+                ]
+            ).execute()
+            search_term = inquirer.text(
+                message=f"Enter {search_by.replace('tag:', '')} (partial match):"
+            ).execute().strip()
+            print(f"\nSearching for running instances matching '{search_term}'...")
+            instances = search_ec2_instances(ec2_client, search_term, search_by)
+            display_instances(instances)
         
-        elif choice == '3' or choice.lower() == 'control ec2 instance':
-            asg_name = control_ec2_instance(ec2_client, asg_client, session)
+        elif action == "create_ec2":
+            create_ec2_instance(ec2_client)
+        
+        elif action == "modify_ec2":
+            instance_id = inquirer.text(message="Enter EC2 Instance ID:").execute().strip()
+            modify_ec2_instance(ec2_client, instance_id)
+        
+        elif action == "modify_state":
+            instance_id = inquirer.text(message="Enter EC2 Instance ID:").execute().strip()
+            asg_name = control_ec2_instance(ec2_client, asg_client, instance_id)
             if asg_name:
-                asg_control_panel(asg_client, session, preselected_asg=asg_name)
+                asg_control_panel(asg_client, preselected_asg=asg_name)
         
-        elif choice == '4' or choice.lower() == 'asg control panel':
-            asg_control_panel(asg_client, session)
+        elif action == "auto_scaling":
+            asg_control_panel(asg_client)
         
-        elif choice == '5' or choice.lower() == 'exit':
+        elif action == "refresh_asg":
+            refresh_asg_menu(asg_client)
+        
+        elif action == "exit":
             print("Exiting...")
             break
-        
-        else:
-            print("Invalid option. Please select 1-5 or type the option name.")
 
 if __name__ == "__main__":
     main()
