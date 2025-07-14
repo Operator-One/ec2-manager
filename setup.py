@@ -1,29 +1,29 @@
 from setuptools import setup, find_packages
+from setuptools import setup, find_packages
 
 setup(
-    name='ec2_manager',
-    version='0.1.0',
-    author='Operator-One',
-    author_email='cullen.guimond@gmail.com',
-    description='Allows you to manage and create resources in AWS EC2',
-    long_description=open('README.md').read(),
-    long_description_content_type='text/markdown',
-    url='https://github.com/Operator-One/Ec2Manager',
+    name="ec2_manager",
+    version="1.12.0",
+    description="A CLI tool to manage and view AWS EC2 instances and Auto Scaling Groups",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    author="Your Name",
+    author_email="cullen.guimond@proton.me",
+    url="https://github.com/cullenwerks/ec2_manager",
     packages=find_packages(),
     install_requires=[
-        'boto3>=1.17',
-        'inquirer>=2.7.0',
+        "boto3>=1.34.0",
+        "prompt_toolkit>=3.0.0",
     ],
-entry_points={
-    'console_scripts': [
-        'ec2-manager=main.py:main',
-    ],
+    entry_points={
+        "console_scripts": [
+            "awscli=awscli.main:main",
+        ],
     },
     classifiers=[
-        'Development Status :: 3 - Alpha',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: MIT License',
-        'Programming Language :: Python :: 3.10',
-        'Operating System :: OS Independent',
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
     ],
+    python_requires=">=3.6",
 )
