@@ -1,4 +1,4 @@
-# AWS CLI Tool
+# ec2-manager
 
 A command-line interface (CLI) tool to manage and view AWS EC2 instances and Auto Scaling Groups using Python and Boto3.
 
