@@ -643,7 +643,7 @@ def perform_asg_refresh(asg_client, asg_name):
 
         progress = Progress(
             SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}", no_wrap=True, overflow="ellipsis"),
+            TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             TimeElapsedColumn(),
