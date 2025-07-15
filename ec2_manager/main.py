@@ -4,7 +4,7 @@ import json
 import time
 import re
 from botocore.exceptions import ClientError, NoCredentialsError
-from inquirer import inquirer
+from inquirerpy import inquirer
 from inquirerpy.base.control import Choice
 from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import HTML

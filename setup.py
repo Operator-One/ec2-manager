@@ -14,7 +14,7 @@ setup(
         "boto3>=1.34.0",
         "prompt_toolkit>=3.0.0",
         "setuptools>=65.5.0",
-        "inquirer>=0.3.4",
+        "inquirerpy>=0.3.4",
     ],
     entry_points={
         "console_scripts": [
