@@ -46,7 +46,7 @@ Run the tool from the command line:
 
 ```bash
 python ec2_manager/main.py
-
+```
 ## Running Example Pictures
 Instance Creation:
 <img width="1232" height="785" alt="image" src="https://github.com/user-attachments/assets/86587f32-7bc5-4788-9e13-786c4d4ce247" />
