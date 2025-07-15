@@ -46,3 +46,28 @@ Run the tool from the command line:
 
 ```bash
 python ec2_manager/main.py
+
+## Running Example Pictures
+Instance Creation:
+<img width="1232" height="785" alt="image" src="https://github.com/user-attachments/assets/86587f32-7bc5-4788-9e13-786c4d4ce247" />
+View All Instances:
+<img width="1558" height="505" alt="image" src="https://github.com/user-attachments/assets/d574492d-4ff1-4cb9-9b76-3fc1a7632526" />
+Search Instances by Tag:
+<img width="1518" height="422" alt="image" src="https://github.com/user-attachments/assets/66065c24-df4f-4fbb-a1f0-3b54b32f7c95" />
+Modify Instance Termination Protection:
+<img width="1097" height="219" alt="image" src="https://github.com/user-attachments/assets/9573b7f2-68a3-4468-b046-291dd46cda97" />
+Instance Start/Stop/Terminate/Reboot:
+<img width="886" height="265" alt="image" src="https://github.com/user-attachments/assets/d4f1947e-16e0-4c79-9265-2eba165ee7cb" />
+Target Group Viewer:
+<img width="1254" height="406" alt="image" src="https://github.com/user-attachments/assets/ad53c8bd-450c-4242-9870-d3ecbf20d790" />
+View Auto Scaling Groups:
+<img width="1094" height="467" alt="image" src="https://github.com/user-attachments/assets/dc5df535-4667-48bb-9a8b-0cfbb1ee7495" />
+Modify ASG Scalar Values:
+<img width="877" height="334" alt="image" src="https://github.com/user-attachments/assets/ae88d665-ae7e-4036-9354-3b7f3f924969" />
+
+
+
+
+
+
+
