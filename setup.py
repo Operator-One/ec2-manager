@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="ec2-manager",
-    version="1.12.0",
+    version="2.0.0",
     description="A CLI tool to manage and view AWS EC2 instances and Auto Scaling Groups",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -15,6 +15,7 @@ setup(
         "prompt_toolkit>=3.0.0",
         "setuptools>=65.5.0",
         "questionary",
+        "rich"
     ],
     entry_points={
         "console_scripts": [
