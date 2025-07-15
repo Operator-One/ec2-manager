@@ -300,24 +300,33 @@ def manage_single_instance(ec2_client, instance_id):
         console.print(Panel(f"Managing Instance: {instance_id}", expand=False, border_style="yellow"))
         action = questionary.select(
             "Select an action:",
-            choices=["Change State (Start/Stop/Reboot...)", "Back"]
+            choices=[
+                "Change State (Start/Stop/Reboot...)",
+                "Enable/Disable Termination Protection",
+                "Back"
+            ]
         ).ask()
         if action == "Back" or action is None: break
         elif action == "Change State (Start/Stop/Reboot...)":
-            control_instance_state(ec2_client, instance_id)
+            terminated = control_instance_state(ec2_client, instance_id)
+            if terminated:
+                # If instance was terminated, break out of this management loop
+                break
+        elif action == "Enable/Disable Termination Protection":
+            modify_termination_protection(ec2_client, instance_id)
 
 def control_instance_state(ec2_client, instance_id):
-    """Handles Start, Stop, Reboot, Terminate actions."""
+    """Handles Start, Stop, Reboot, Terminate actions. Returns True if terminated."""
     action = questionary.select(
         f"Choose a state change for {instance_id}:",
         choices=["start", "stop", "reboot", "terminate", "Back"]
     ).ask()
 
-    if not action or action == "Back": return
+    if not action or action == "Back": return False
 
     if action == "terminate" and not questionary.confirm(f"Are you sure you want to terminate {instance_id}?", default=False).ask():
         console.print("[yellow]Termination cancelled.[/yellow]")
-        return
+        return False
     try:
         with console.status(f"[bold yellow]Performing '{action}' on {instance_id}...[/bold yellow]"):
             if action == 'start':
@@ -332,8 +341,46 @@ def control_instance_state(ec2_client, instance_id):
                 ec2_client.terminate_instances(InstanceIds=[instance_id])
                 ec2_client.get_waiter('instance_terminated').wait(InstanceIds=[instance_id])
         console.print(f"✅ [bold green]Instance {instance_id} {action}ed successfully.[/bold green]")
+        questionary.press_any_key_to_continue().ask()
+        if action == 'terminate':
+            return True # Signal successful termination
     except ClientError as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
+    return False
+
+def modify_termination_protection(ec2_client, instance_id):
+    """Enables or disables termination protection for an instance."""
+    try:
+        with console.status(f"Fetching termination protection status for {instance_id}..."):
+            response = ec2_client.describe_instance_attribute(
+                InstanceId=instance_id,
+                Attribute='disableApiTermination'
+            )
+        current_status = response['DisableApiTermination']['Value']
+        
+        console.print(f"Termination protection for {instance_id} is currently: [bold {'green' if current_status else 'red'}]{'Enabled' if current_status else 'Disabled'}[/bold]")
+
+        enable = questionary.confirm(
+            "Do you want to ENABLE termination protection?",
+            default=not current_status
+        ).ask()
+
+        if enable is None:
+            console.print("[yellow]Operation cancelled.[/yellow]")
+            return
+
+        with console.status(f"Setting termination protection to {'Enabled' if enable else 'Disabled'}..."):
+            ec2_client.modify_instance_attribute(
+                InstanceId=instance_id,
+                DisableApiTermination={'Value': enable}
+            )
+        
+        console.print(f"✅ [bold green]Termination protection for {instance_id} has been set to {'Enabled' if enable else 'Disabled'}.[/bold green]")
+        questionary.press_any_key_to_continue().ask()
+
+    except ClientError as e:
+        console.print(f"[bold red]Error modifying termination protection: {e}[/bold red]")
+
 
 def search_instances_by_tag(ec2_client):
     """Search for EC2 instances by a specific tag, using a 'contains' match."""
@@ -521,7 +568,13 @@ def perform_asg_refresh(asg_client, asg_name):
             response = asg_client.start_instance_refresh(AutoScalingGroupName=asg_name, Strategy='Rolling', Preferences=preferences)
             refresh_id = response['InstanceRefreshId']
         
-        progress = Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TextColumn("[progress.percentage]{task.percentage:>3.0f}%"), console=console)
+        progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}", no_wrap=True, overflow="ellipsis"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            console=console
+        )
         
         with progress:
             task = progress.add_task(f"Refreshing {asg_name}", total=100)
@@ -595,13 +648,13 @@ def main():
     check_python_version()
     
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.2", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.4", expand=False, border_style="blue"))
 
     session = get_boto_session()
     if not session: sys.exit(1)
 
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.2", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.4", expand=False, border_style="blue"))
     region = select_aws_region(session)
     if not region: sys.exit(1)
 
@@ -612,7 +665,7 @@ def main():
 
     while True:
         console.clear()
-        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.2", expand=False, border_style="blue"))
+        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.4", expand=False, border_style="blue"))
         category = questionary.select(
             "Select a service category to manage:",
             choices=["Compute (EC2 & ASG)", "Load Balancing (ALB/NLB/TG)", "Exit"]
