@@ -397,29 +397,68 @@ def manage_single_asg(asg_client):
         console.print(Panel(f"Managing ASG: {asg_name}", expand=False, border_style="yellow"))
         action = questionary.select(
             "Select an action:",
-            choices=["Set Desired Capacity", "Perform Rolling Refresh", "Back"],
+            choices=["Update Min/Max/Desired Capacity", "Perform Rolling Refresh", "Back"],
             use_indicator=True
         ).ask()
 
         if action == "Back" or action is None: break
-        elif action == "Set Desired Capacity":
-            set_asg_desired_capacity(asg_client, asg_name)
+        elif action == "Update Min/Max/Desired Capacity":
+            update_asg_size(asg_client, asg_name)
         elif action == "Perform Rolling Refresh":
             perform_asg_refresh(asg_client, asg_name)
 
-def set_asg_desired_capacity(asg_client, asg_name):
-    """Set the desired capacity for a given ASG."""
-    desired_str = questionary.text("Enter new desired capacity:").ask()
-    if desired_str is None: return
+def update_asg_size(asg_client, asg_name):
+    """Update the min, max, and desired capacity for a given ASG."""
     try:
-        desired = int(desired_str)
-        with console.status(f"[bold yellow]Setting desired capacity to {desired}...[/bold yellow]"):
-            asg_client.set_desired_capacity(AutoScalingGroupName=asg_name, DesiredCapacity=desired)
-        console.print("✅ [bold green]Desired capacity updated.[/bold green]")
+        # Fetch current values to use as defaults
+        current_asg = fetch_data(
+            asg_client, 
+            'AutoScalingGroups', 
+            f"Fetching current state of {asg_name}...",
+            params={'AutoScalingGroupNames': [asg_name]}
+        )[0]
+        
+        current_min = str(current_asg['MinSize'])
+        current_max = str(current_asg['MaxSize'])
+        current_desired = str(current_asg['DesiredCapacity'])
+
+        console.print(f"Current values: Min={current_min}, Max={current_max}, Desired={current_desired}")
+
+        # Prompt for new values, using current as defaults
+        min_str = questionary.text("Enter new Min Size:", default=current_min).ask()
+        if min_str is None: return
+        
+        max_str = questionary.text("Enter new Max Size:", default=current_max).ask()
+        if max_str is None: return
+
+        desired_str = questionary.text("Enter new Desired Capacity:", default=current_desired).ask()
+        if desired_str is None: return
+
+        # Convert to integers for validation and API call
+        new_min = int(min_str)
+        new_max = int(max_str)
+        new_desired = int(desired_str)
+
+        if not (new_min <= new_desired <= new_max):
+            console.print("[bold red]Validation Error: Desired capacity must be between min and max size.[/bold red]")
+            return
+
+        with console.status(f"[bold yellow]Updating ASG {asg_name}...[/bold yellow]"):
+            asg_client.update_auto_scaling_group(
+                AutoScalingGroupName=asg_name,
+                MinSize=new_min,
+                MaxSize=new_max,
+                DesiredCapacity=new_desired
+            )
+        console.print("✅ [bold green]ASG size updated successfully.[/bold green]")
+
     except (ValueError, TypeError):
-        console.print("[bold red]Invalid number.[/bold red]")
+        console.print("[bold red]Invalid input. Please enter numbers only.[/bold red]")
+    except IndexError:
+        console.print(f"[bold red]Could not find ASG: {asg_name}[/bold red]")
     except ClientError as e:
-        console.print(f"[bold red]Error: {e}[/bold red]")
+        console.print(f"[bold red]Error updating ASG: {e}[/bold red]")
+
 
 def perform_asg_refresh(asg_client, asg_name):
     """Perform a rolling instance refresh on an ASG with a progress bar."""
@@ -486,13 +525,13 @@ def main():
     check_python_version()
     
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v3.9", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.0", expand=False, border_style="blue"))
 
     session = get_boto_session()
     if not session: sys.exit(1)
 
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v3.9", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.0", expand=False, border_style="blue"))
     region = select_aws_region(session)
     if not region: sys.exit(1)
 
@@ -502,7 +541,7 @@ def main():
 
     while True:
         console.clear()
-        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v3.9", expand=False, border_style="blue"))
+        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.0", expand=False, border_style="blue"))
         category = questionary.select(
             "Select a service category to manage:",
             choices=[
