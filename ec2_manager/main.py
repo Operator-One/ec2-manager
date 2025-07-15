@@ -80,7 +80,7 @@ def get_boto_session():
             return None
 
 def select_aws_region(session):
-    """Prompt user to select an AWS region from a descriptive list."""
+    """Prompt user to select an AWS region from a descriptive list or enter one manually."""
     try:
         # A default region is required to make the initial call to describe_regions
         ec2_client = session.client('ec2', region_name='us-east-1')
@@ -94,16 +94,41 @@ def select_aws_region(session):
                 value=region  # The actual value passed back is the region code
             ) for region in sorted(regions)
         ]
+        
+        # Add the manual entry option, separated for clarity
+        choices.append(questionary.Separator())
+        choices.append(questionary.Choice(title="[ Manually Enter a Region ]", value="__manual__"))
 
-        selected_region = questionary.select(
-            "Select AWS Region:",
+        selected_option = questionary.select(
+            "Select AWS Region (or choose to enter one manually):",
             choices=choices,
             use_indicator=True
         ).ask()
-        return selected_region
+
+        if selected_option is None:
+            # User cancelled the selection
+            return None
+        
+        if selected_option == "__manual__":
+            # Prompt for manual input
+            manual_region = questionary.text(
+                "Enter the custom region code:",
+                validate=lambda text: True if len(text.strip()) > 0 else "Region cannot be empty."
+            ).ask()
+            return manual_region # Returns the entered string or None if cancelled
+        
+        # User selected a region from the list
+        return selected_option
+
     except ClientError as e:
-        console.print(f"[bold red]Could not fetch AWS regions: {e}[/bold red]")
-        return None
+        console.print(f"[bold red]Could not fetch public AWS regions: {e}[/bold red]")
+        # If API fails, still allow manual entry as a fallback
+        console.print("[yellow]You can still enter a region manually.[/yellow]")
+        manual_region = questionary.text(
+            "Enter the custom region code:",
+            validate=lambda text: True if len(text.strip()) > 0 else "Region cannot be empty."
+        ).ask()
+        return manual_region
 
 # --- Display Functions ---
 
