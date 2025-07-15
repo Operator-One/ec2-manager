@@ -265,6 +265,21 @@ def create_ec2_instance(ec2_client):
             if value is None: continue
             tags.append({'Key': key, 'Value': value})
 
+        summary = f"""
+[bold]AMI ID:[/] {ami_id}
+[bold]Instance Type:[/] {instance_type}
+[bold]Key Pair:[/] {key_name}
+[bold]VPC ID:[/] {vpc_id}
+[bold]Subnet ID:[/] {subnet_id}
+[bold]Security Groups:[/] {', '.join(security_group_ids)}
+[bold]Tags:[/] {', '.join([f"{t['Key']}={t['Value']}" for t in tags])}
+        """
+        console.print(Panel(summary, title="[bold yellow]Launch Summary[/bold yellow]", expand=False))
+        
+        if not questionary.confirm("Proceed with launching this instance?", default=True).ask():
+            console.print("[yellow]Instance launch cancelled.[/yellow]")
+            return
+
         run_params = {
             'ImageId': ami_id, 'InstanceType': instance_type, 'SubnetId': subnet_id,
             'SecurityGroupIds': security_group_ids, 'MinCount': 1, 'MaxCount': 1,
@@ -310,7 +325,6 @@ def manage_single_instance(ec2_client, instance_id):
         elif action == "Change State (Start/Stop/Reboot...)":
             terminated = control_instance_state(ec2_client, instance_id)
             if terminated:
-                # If instance was terminated, break out of this management loop
                 break
         elif action == "Enable/Disable Termination Protection":
             modify_termination_protection(ec2_client, instance_id)
@@ -343,7 +357,7 @@ def control_instance_state(ec2_client, instance_id):
         console.print(f"✅ [bold green]Instance {instance_id} {action}ed successfully.[/bold green]")
         questionary.press_any_key_to_continue().ask()
         if action == 'terminate':
-            return True # Signal successful termination
+            return True
     except ClientError as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
     return False
@@ -358,12 +372,10 @@ def modify_termination_protection(ec2_client, instance_id):
             )
         current_status = response['DisableApiTermination']['Value']
         
-        if current_status:
-            status_text = "[bold green]Enabled[/bold]"
-        else:
-            status_text = "[bold red]Disabled[/bold]"
+        status_text = Text("Enabled", style="bold green") if current_status else Text("Disabled", style="bold red")
         
-        console.print(f"Termination protection for {instance_id} is currently: {status_text}")
+        console.print(f"Termination protection for {instance_id} is currently: ", end="")
+        console.print(status_text)
 
         enable = questionary.confirm(
             "Do you want to ENABLE termination protection?",
@@ -653,13 +665,13 @@ def main():
     check_python_version()
     
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.5", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.6", expand=False, border_style="blue"))
 
     session = get_boto_session()
     if not session: sys.exit(1)
 
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.5", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.6", expand=False, border_style="blue"))
     region = select_aws_region(session)
     if not region: sys.exit(1)
 
@@ -670,7 +682,7 @@ def main():
 
     while True:
         console.clear()
-        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.5", expand=False, border_style="blue"))
+        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.6", expand=False, border_style="blue"))
         category = questionary.select(
             "Select a service category to manage:",
             choices=["Compute (EC2 & ASG)", "Load Balancing (ALB/NLB/TG)", "Exit"]
