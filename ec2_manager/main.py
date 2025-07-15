@@ -411,12 +411,17 @@ def update_asg_size(asg_client, asg_name):
     """Update the min, max, and desired capacity for a given ASG."""
     try:
         # Fetch current values to use as defaults
-        current_asg = fetch_data(
+        current_asg_list = fetch_data(
             asg_client, 
+            'describe_auto_scaling_groups',
             'AutoScalingGroups', 
             f"Fetching current state of {asg_name}...",
             params={'AutoScalingGroupNames': [asg_name]}
-        )[0]
+        )
+        if not current_asg_list:
+            console.print(f"[bold red]Could not find ASG: {asg_name}[/bold red]")
+            return
+        current_asg = current_asg_list[0]
         
         current_min = str(current_asg['MinSize'])
         current_max = str(current_asg['MaxSize'])
@@ -525,13 +530,13 @@ def main():
     check_python_version()
     
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.0", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.1", expand=False, border_style="blue"))
 
     session = get_boto_session()
     if not session: sys.exit(1)
 
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.0", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.1", expand=False, border_style="blue"))
     region = select_aws_region(session)
     if not region: sys.exit(1)
 
@@ -541,7 +546,7 @@ def main():
 
     while True:
         console.clear()
-        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.0", expand=False, border_style="blue"))
+        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.1", expand=False, border_style="blue"))
         category = questionary.select(
             "Select a service category to manage:",
             choices=[
