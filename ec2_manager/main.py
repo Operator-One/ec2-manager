@@ -625,17 +625,28 @@ def update_asg_size(asg_client, asg_name):
 
 
 def perform_asg_refresh(asg_client, asg_name):
-    """Perform a rolling instance refresh on an ASG with a progress bar."""
-    if not questionary.confirm(f"Start a rolling instance refresh for {asg_name}?", default=True).ask():
-        console.print("[yellow]Refresh cancelled.[/yellow]")
-        return
-    
-    skip_matching = questionary.confirm("Enable 'Skip Matching'? (This will ignore instances that don't use the latest launch template)", default=False).ask()
-    if skip_matching is None:
-        console.print("[yellow]Refresh cancelled.[/yellow]")
-        return
-
+    """Perform a rolling instance refresh on an ASG with a progress bar and pre-flight checks."""
     try:
+        # Pre-flight check for existing refreshes
+        with console.status(f"Checking for existing instance refreshes on {asg_name}..."):
+            existing_refreshes = asg_client.describe_instance_refreshes(AutoScalingGroupName=asg_name).get('InstanceRefreshes', [])
+            active_refreshes = [r for r in existing_refreshes if r['Status'] in ['Pending', 'InProgress']]
+        
+        if active_refreshes:
+            console.print(f"[bold yellow]Warning: An instance refresh with ID '{active_refreshes[0]['InstanceRefreshId']}' is already in progress with status '{active_refreshes[0]['Status']}'.[/bold yellow]")
+            if not questionary.confirm("Starting a new refresh will cancel the existing one. Proceed anyway?", default=False).ask():
+                console.print("[yellow]Operation cancelled.[/yellow]")
+                return
+
+        if not questionary.confirm(f"Start a rolling instance refresh for {asg_name}?", default=True).ask():
+            console.print("[yellow]Refresh cancelled.[/yellow]")
+            return
+        
+        skip_matching = questionary.confirm("Enable 'Skip Matching'? (This will ignore instances that don't use the latest launch template)", default=False).ask()
+        if skip_matching is None:
+            console.print("[yellow]Refresh cancelled.[/yellow]")
+            return
+
         preferences = {'MinHealthyPercentage': 90, 'SkipMatching': skip_matching}
         with console.status(f"[bold yellow]Initiating instance refresh...[/bold yellow]"):
             response = asg_client.start_instance_refresh(AutoScalingGroupName=asg_name, Strategy='Rolling', Preferences=preferences)
@@ -667,8 +678,11 @@ def perform_asg_refresh(asg_client, asg_name):
                     break
                 time.sleep(10)
         console.print(f"✅ [bold green]Instance refresh completed with status: {final_status}[/bold green]")
+        
     except ClientError as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
+    
+    questionary.press_any_key_to_continue().ask()
 
 # --- Load Balancer & Target Group Management ---
 def manage_load_balancing(elbv2_client):
