@@ -194,6 +194,26 @@ def display_asgs(asgs):
         )
     console.print(table)
 
+def display_target_groups(tgs):
+    """Display Target Groups in a rich table."""
+    if not tgs:
+        console.print("[yellow]No Target Groups found.[/yellow]")
+        return
+    table = Table(title="Target Groups", style="cyan", title_style="bold magenta", header_style="bold blue")
+    table.add_column("Name")
+    table.add_column("Protocol")
+    table.add_column("Port")
+    table.add_column("Target Type")
+    table.add_column("VPC ID")
+    for tg in tgs:
+        table.add_row(
+            tg.get('TargetGroupName', 'N/A'),
+            tg.get('Protocol', 'N/A'),
+            str(tg.get('Port', 'N/A')),
+            tg.get('TargetType', 'N/A'),
+            tg.get('VpcId', 'N/A')
+        )
+    console.print(table)
 
 # --- EC2 Management ---
 def create_ec2_instance(ec2_client):
@@ -201,24 +221,20 @@ def create_ec2_instance(ec2_client):
     console.clear()
     console.print(Panel("[bold]Create New EC2 Instance[/bold]", expand=False, border_style="green"))
     try:
-        # AMI Selection
         amis = fetch_data(ec2_client, 'describe_images', 'Images', "Fetching AMIs...", params={'Owners': ['amazon'], 'Filters': [{'Name': 'name', 'Values': ['amzn2-ami-hvm-*-x86_64-gp2']}]})
         if not amis: return
         ami_choices = [questionary.Choice(f"{ami['Name']}", value=ami['ImageId']) for ami in sorted(amis, key=lambda x: x['CreationDate'], reverse=True)[:10]]
         ami_id = questionary.select("Select an Amazon Machine Image (AMI):", choices=ami_choices).ask()
         if not ami_id: return
 
-        # Instance Type
         instance_type = questionary.select("Select an instance type:", choices=["t2.micro", "t3.small", "m5.large"], default="t2.micro").ask()
         if not instance_type: return
 
-        # Key Pair
         key_pairs = fetch_data(ec2_client, 'describe_key_pairs', 'KeyPairs', "Fetching Key Pairs...")
         kp_choices = [kp['KeyName'] for kp in key_pairs] + ["[ No Key Pair ]"]
         key_name = questionary.select("Select a key pair:", choices=kp_choices).ask()
         if not key_name: return
 
-        # Networking
         vpcs = fetch_data(ec2_client, 'describe_vpcs', 'Vpcs', "Fetching VPCs...")
         if not vpcs: return
         vpc_choices = [questionary.Choice(f"{vpc['VpcId']} ({get_name_tag(vpc)})", value=vpc['VpcId']) for vpc in vpcs]
@@ -237,7 +253,6 @@ def create_ec2_instance(ec2_client):
         security_group_ids = questionary.checkbox("Select Security Groups:", choices=sg_choices).ask()
         if not security_group_ids: return
 
-        # Tagging
         tags = []
         name_tag = questionary.text("Enter a 'Name' tag for the instance:").ask()
         if name_tag is None: return
@@ -250,7 +265,6 @@ def create_ec2_instance(ec2_client):
             if value is None: continue
             tags.append({'Key': key, 'Value': value})
 
-        # Launch
         run_params = {
             'ImageId': ami_id, 'InstanceType': instance_type, 'SubnetId': subnet_id,
             'SecurityGroupIds': security_group_ids, 'MinCount': 1, 'MaxCount': 1,
@@ -271,7 +285,6 @@ def create_ec2_instance(ec2_client):
         console.print(f"✅ [bold green]Instance {instance_id} is now running.[/bold green]")
         console.print("[bold]Fetching final instance details...[/bold]")
         
-        # Final validation display
         reservations = fetch_data(ec2_client, 'describe_instances', 'Reservations', params={'InstanceIds': [instance_id]})
         final_instance = [inst for res in reservations for inst in res['Instances']]
         display_instances(final_instance)
@@ -365,14 +378,45 @@ def manage_ec2(ec2_client):
 
 
 # --- ASG Management ---
-def manage_asg(asg_client):
+def search_asgs_by_tag(asg_client):
+    """Search for Auto Scaling Groups by a specific tag."""
+    tag_key = questionary.text("Enter the tag key to search for:").ask()
+    if not tag_key: return
+    
+    tag_value = questionary.text(f"Enter the value for tag '{tag_key}':").ask()
+    if tag_value is None: return
+
+    filters = [{'Name': f'tag:{tag_key}', 'Values': [tag_value]}]
+    asgs = fetch_data(asg_client, 'describe_auto_scaling_groups', 'AutoScalingGroups', f"Searching for ASGs with tag '{tag_key}:{tag_value}'...", params={'Filters': filters})
+    display_asgs(asgs)
+    questionary.press_any_key_to_continue("Press any key to return to the menu...").ask()
+
+def view_asg_instances(asg_client, ec2_client, asg_name):
+    """View the instances attached to a specific Auto Scaling Group."""
+    console.print(f"Fetching instances for ASG: [bold cyan]{asg_name}[/bold cyan]")
+    asg_list = fetch_data(asg_client, 'describe_auto_scaling_groups', 'AutoScalingGroups', params={'AutoScalingGroupNames': [asg_name]})
+    if not asg_list:
+        console.print(f"[bold red]Could not find ASG: {asg_name}[/bold red]")
+        return
+
+    instance_ids = [inst['InstanceId'] for inst in asg_list[0].get('Instances', [])]
+    if not instance_ids:
+        console.print(f"[yellow]No instances are currently attached to {asg_name}.[/yellow]")
+        return
+    
+    reservations = fetch_data(ec2_client, 'describe_instances', 'Reservations', params={'InstanceIds': instance_ids})
+    instances = [inst for res in reservations for inst in res['Instances']]
+    display_instances(instances)
+    questionary.press_any_key_to_continue("Press any key to return to the menu...").ask()
+
+def manage_asg(asg_client, ec2_client):
     """Main menu for Auto Scaling Group management."""
     while True:
         console.clear()
         console.print(Panel("Auto Scaling Group Management", expand=False, border_style="green"))
         action = questionary.select(
             "Select an option:",
-            choices=["View All ASGs", "Manage Existing ASG", "Back"],
+            choices=["View All ASGs", "Search ASGs by Tag", "Manage Existing ASG", "Back"],
             use_indicator=True
         ).ask()
         if action == "Back" or action is None: break
@@ -380,10 +424,12 @@ def manage_asg(asg_client):
             asgs = fetch_data(asg_client, 'describe_auto_scaling_groups', 'AutoScalingGroups')
             display_asgs(asgs)
             questionary.press_any_key_to_continue("Press any key to return to the menu...").ask()
+        elif action == "Search ASGs by Tag":
+            search_asgs_by_tag(asg_client)
         elif action == "Manage Existing ASG":
-            manage_single_asg(asg_client)
+            manage_single_asg(asg_client, ec2_client)
 
-def manage_single_asg(asg_client):
+def manage_single_asg(asg_client, ec2_client):
     """Manage a specific, selected Auto Scaling Group."""
     asgs = fetch_data(asg_client, 'describe_auto_scaling_groups', 'AutoScalingGroups')
     if not asgs: return
@@ -397,11 +443,13 @@ def manage_single_asg(asg_client):
         console.print(Panel(f"Managing ASG: {asg_name}", expand=False, border_style="yellow"))
         action = questionary.select(
             "Select an action:",
-            choices=["Update Min/Max/Desired Capacity", "Perform Rolling Refresh", "Back"],
+            choices=["View Attached Instances", "Update Min/Max/Desired Capacity", "Perform Rolling Refresh", "Back"],
             use_indicator=True
         ).ask()
 
         if action == "Back" or action is None: break
+        elif action == "View Attached Instances":
+            view_asg_instances(asg_client, ec2_client, asg_name)
         elif action == "Update Min/Max/Desired Capacity":
             update_asg_size(asg_client, asg_name)
         elif action == "Perform Rolling Refresh":
@@ -410,14 +458,7 @@ def manage_single_asg(asg_client):
 def update_asg_size(asg_client, asg_name):
     """Update the min, max, and desired capacity for a given ASG."""
     try:
-        # Fetch current values to use as defaults
-        current_asg_list = fetch_data(
-            asg_client, 
-            'describe_auto_scaling_groups',
-            'AutoScalingGroups', 
-            f"Fetching current state of {asg_name}...",
-            params={'AutoScalingGroupNames': [asg_name]}
-        )
+        current_asg_list = fetch_data(asg_client, 'describe_auto_scaling_groups', 'AutoScalingGroups', f"Fetching current state of {asg_name}...", params={'AutoScalingGroupNames': [asg_name]})
         if not current_asg_list:
             console.print(f"[bold red]Could not find ASG: {asg_name}[/bold red]")
             return
@@ -429,7 +470,6 @@ def update_asg_size(asg_client, asg_name):
 
         console.print(f"Current values: Min={current_min}, Max={current_max}, Desired={current_desired}")
 
-        # Prompt for new values, using current as defaults
         min_str = questionary.text("Enter new Min Size:", default=current_min).ask()
         if min_str is None: return
         
@@ -439,7 +479,6 @@ def update_asg_size(asg_client, asg_name):
         desired_str = questionary.text("Enter new Desired Capacity:", default=current_desired).ask()
         if desired_str is None: return
 
-        # Convert to integers for validation and API call
         new_min = int(min_str)
         new_max = int(max_str)
         new_desired = int(desired_str)
@@ -471,34 +510,18 @@ def perform_asg_refresh(asg_client, asg_name):
         console.print("[yellow]Refresh cancelled.[/yellow]")
         return
 
-    skip_matching = questionary.confirm(
-        "Enable 'Skip Matching'? (This will ignore instances that don't use the latest launch template)",
-        default=False
-    ).ask()
+    skip_matching = questionary.confirm("Enable 'Skip Matching'? (This will ignore instances that don't use the latest launch template)", default=False).ask()
     if skip_matching is None:
         console.print("[yellow]Refresh cancelled.[/yellow]")
         return
         
     try:
-        preferences = {
-            'MinHealthyPercentage': 90,
-            'SkipMatching': skip_matching
-        }
+        preferences = {'MinHealthyPercentage': 90, 'SkipMatching': skip_matching}
         with console.status(f"[bold yellow]Initiating instance refresh...[/bold yellow]"):
-            response = asg_client.start_instance_refresh(
-                AutoScalingGroupName=asg_name,
-                Strategy='Rolling',
-                Preferences=preferences
-            )
+            response = asg_client.start_instance_refresh(AutoScalingGroupName=asg_name, Strategy='Rolling', Preferences=preferences)
             refresh_id = response['InstanceRefreshId']
         
-        progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            console=console
-        )
+        progress = Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TextColumn("[progress.percentage]{task.percentage:>3.0f}%"), console=console)
         
         with progress:
             task = progress.add_task(f"Refreshing {asg_name}", total=100)
@@ -506,22 +529,64 @@ def perform_asg_refresh(asg_client, asg_name):
             while not progress.finished:
                 res = asg_client.describe_instance_refreshes(AutoScalingGroupName=asg_name, InstanceRefreshIds=[refresh_id])
                 refresh_details = res['InstanceRefreshes'][0]
-                status = refresh_details['Status']
-                percentage = refresh_details.get('PercentageComplete', 0)
-                status_reason = refresh_details.get('StatusReason', '')
-
+                status, percentage, status_reason = refresh_details['Status'], refresh_details.get('PercentageComplete', 0), refresh_details.get('StatusReason', '')
                 progress.update(task, completed=percentage, description=f"Status: [bold cyan]{status}[/bold cyan] - {status_reason}")
-
                 if status in ['Successful', 'Failed', 'Cancelled', 'Cancelling']:
                     final_status = status
-                    if status == 'Successful':
-                        progress.update(task, completed=100)
+                    if status == 'Successful': progress.update(task, completed=100)
                     break
                 time.sleep(10)
-
         console.print(f"✅ [bold green]Instance refresh completed with status: {final_status}[/bold green]")
     except ClientError as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
+
+# --- Load Balancer & Target Group Management ---
+def manage_load_balancing(elbv2_client):
+    """Main menu for Load Balancing services."""
+    while True:
+        console.clear()
+        console.print(Panel("Load Balancing Management", expand=False, border_style="blue"))
+        service = questionary.select("Select a service:", choices=["Target Groups", "Back"]).ask()
+        if service == "Back" or service is None: break
+        elif service == "Target Groups":
+            manage_target_groups(elbv2_client)
+
+def manage_target_groups(elbv2_client):
+    """Main menu for Target Group management."""
+    while True:
+        console.clear()
+        console.print(Panel("Target Group Management", expand=False, border_style="green"))
+        action = questionary.select("Select an option:", choices=["View All Target Groups", "Search Target Groups by Tag", "Back"]).ask()
+        if action == "Back" or action is None: break
+        elif action == "View All Target Groups":
+            tgs = fetch_data(elbv2_client, 'describe_target_groups', 'TargetGroups')
+            display_target_groups(tgs)
+            questionary.press_any_key_to_continue().ask()
+        elif action == "Search Target Groups by Tag":
+            search_target_groups_by_tag(elbv2_client)
+
+def search_target_groups_by_tag(elbv2_client):
+    """Search for Target Groups by a specific tag."""
+    tag_key = questionary.text("Enter the tag key:").ask()
+    if not tag_key: return
+    tag_value = questionary.text(f"Enter the value for tag '{tag_key}':").ask()
+    if tag_value is None: return
+
+    all_tgs = fetch_data(elbv2_client, 'describe_target_groups', 'TargetGroups', "Fetching all target groups...")
+    if not all_tgs: return
+    
+    tg_arns = [tg['TargetGroupArn'] for tg in all_tgs]
+    all_tags = fetch_data(elbv2_client, 'describe_tags', 'TagDescriptions', "Fetching tags...", params={'ResourceArns': tg_arns})
+    
+    tags_map = {desc['ResourceArn']: {tag['Key']: tag['Value'] for tag in desc['Tags']} for desc in all_tags}
+    
+    matching_tgs = [
+        tg for tg in all_tgs 
+        if tags_map.get(tg['TargetGroupArn'], {}).get(tag_key) == tag_value
+    ]
+    
+    display_target_groups(matching_tgs)
+    questionary.press_any_key_to_continue().ask()
 
 
 # --- Main Loop ---
@@ -530,30 +595,27 @@ def main():
     check_python_version()
     
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.1", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.2", expand=False, border_style="blue"))
 
     session = get_boto_session()
     if not session: sys.exit(1)
 
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.1", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.2", expand=False, border_style="blue"))
     region = select_aws_region(session)
     if not region: sys.exit(1)
 
     # Initialize clients
     ec2 = session.client('ec2', region_name=region)
     asg = session.client('autoscaling', region_name=region)
+    elbv2 = session.client('elbv2', region_name=region)
 
     while True:
         console.clear()
-        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.1", expand=False, border_style="blue"))
+        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.2", expand=False, border_style="blue"))
         category = questionary.select(
             "Select a service category to manage:",
-            choices=[
-                "Compute (EC2 & ASG)",
-                "Exit"
-            ],
-            use_indicator=True
+            choices=["Compute (EC2 & ASG)", "Load Balancing (ALB/NLB/TG)", "Exit"]
         ).ask()
 
         if category == "Exit" or category is None: break
@@ -561,14 +623,14 @@ def main():
         if category == "Compute (EC2 & ASG)":
             console.clear()
             console.print(Panel("Compute Management", expand=False, border_style="blue"))
-            compute_action = questionary.select(
-                "Select a compute service:",
-                choices=["EC2 Instances", "Auto Scaling Groups", "Back"]
-            ).ask()
+            compute_action = questionary.select("Select a compute service:", choices=["EC2 Instances", "Auto Scaling Groups", "Back"]).ask()
             if compute_action == "EC2 Instances":
                 manage_ec2(ec2)
             elif compute_action == "Auto Scaling Groups":
-                manage_asg(asg)
+                manage_asg(asg, ec2)
+        
+        elif category == "Load Balancing (ALB/NLB/TG)":
+            manage_load_balancing(elbv2)
             
     console.clear()
     console.print("[bold cyan]Goodbye![/bold cyan]")
