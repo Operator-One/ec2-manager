@@ -95,6 +95,10 @@ If no credentials are found, it will prompt you to enter your **AWS Access Key I
 6.  Confirm the action.
 7.  Watch the real-time status updates as the refresh progresses.
 
+Example Screenshot of ASG Refresher usage.
+<img width="1568" height="397" alt="image" src="https://github.com/user-attachments/assets/57b67f4c-3e00-4dfa-b109-15bfc52b1c30" />
+
+
 ```
 $ ec2-manager
 ┌──────────────────────────────────────┐
