@@ -3,7 +3,7 @@ import boto3
 import json
 import time
 import re
-from botocore.exceptions import ClientError, NoCredentialsError, InvalidClientTokenId
+from botocore.exceptions import ClientError, NoCredentialsError
 from inquirerpy import inquirer
 from inquirerpy.base.control import Choice
 from prompt_toolkit import PromptSession
@@ -61,11 +61,11 @@ def validate_aws_credentials(access_key, secret_key, session_token, region):
     except NoCredentialsError:
         print("Error: No valid AWS credentials provided.")
         return None
-    except InvalidClientTokenId:
-        print("Error: Invalid AWS Access Key ID or Secret Access Key.")
-        return None
     except ClientError as e:
-        if 'ExpiredToken' in str(e):
+        error_code = e.response.get('Error', {}).get('Code', '')
+        if error_code == 'InvalidClientTokenId':
+            print("Error: Invalid AWS Access Key ID or Secret Access Key.")
+        elif error_code == 'ExpiredToken':
             print("Error: AWS Session Token has expired. Please refresh your credentials via your STS portal.")
         else:
             print(f"Error validating AWS credentials: {e}")
@@ -184,9 +184,10 @@ def create_ec2_instance(ec2_client):
         # Fetch key pairs
         response = ec2_client.describe_key_pairs()
         key_pairs = [kp['KeyName'] for kp in response['KeyPairs']]
+        key_pairs.append('None')
         key_pair = inquirer.select(
             message="Select key pair (or skip):",
-            choices=key_pairs + ['None'],
+            choices=key_pairs,
             default='None'
         ).execute()
 
@@ -558,7 +559,7 @@ def main():
         region = prompt_for_region()
         boto3_session = boto3.Session(region_name=region)
         print(f"AWS credentials validated. Connected as: {response['Arn']} in region {region}")
-    except (NoCredentialsError, InvalidClientTokenId, ClientError):
+    except (NoCredentialsError, ClientError):
         print("No valid AWS credentials found. Prompting for credentials...")
         access_key, secret_key, session_token, region = prompt_for_credentials()
         boto3_session = validate_aws_credentials(access_key, secret_key, session_token, region)
