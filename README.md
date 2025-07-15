@@ -1,57 +1,125 @@
-# EC2 Manager CLI Tool 🚀
+# AWS EC2 & ASG Manager
 
-![Python](https://img.shields.io/badge/Python-3.6+-blue.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
-![AWS](https://img.shields.io/badge/AWS-EC2%20%26%20ASG-orange.svg)
+A modern, interactive Command-Line Interface (CLI) for managing AWS EC2 instances and Auto Scaling Groups (ASGs). This tool provides a user-friendly, menu-driven experience, eliminating the need to memorize complex AWS CLI commands.
 
-A command-line interface (CLI) tool built with Python and Boto3 to manage AWS EC2 instances and Auto Scaling Groups (ASGs). It features a keyboard-navigable, list-based menu powered by InquirerPy, supporting dynamic instance searching, creation, modification, and ASG management, optimized for classified environments (e.g., AWS GovCloud).
+![EC2 & ASG Manager Demo](https://placehold.co/800x400/2d3748/ffffff?text=EC2+%26+ASG+Manager+CLI)
 
-## ✨ Features
+## Features
 
-- **EC2 Management**:
-  - 📋 View all running instances (including those without Name tags).
-  - 🔍 Search running instances by Name tag or private IP (partial matches).
-  - 🆕 Create new EC2 instances with customizable parameters.
-  - ✏️ Modify instance attributes (tags, security groups).
-  - 🔄 Control instance states: start, stop, terminate (ASG instances protected).
-- **Auto Scaling Group Management**:
-  - 📋 View all ASGs or search by name.
-  - ⚙️ Modify ASG properties (min/max/desired capacity) or refresh instances.
-- **Security & Compliance**:
-  - 🔐 Prompt for AWS credentials if not preconfigured.
-  - 🌍 Support for special regions (e.g., GovCloud: `us-gov-west-1`).
-  - 🛡️ Validates Python 3.6+ and AWS credentials.
-- **User Experience**:
-  - 🖥️ Interactive list-based menu (navigate with arrow keys, select with Enter).
-  - 📜 Clear error messages and status updates.
+- **Interactive Menus**: Navigate through options using your keyboard. No need to type long commands.
+- **Rich Visuals**: Utilizes the `rich` library to display information in beautifully formatted tables, panels, and spinners.
+- **EC2 Instance Management**:
+    - View all instances with their current status.
+    - Start, stop, reboot, and terminate instances by selecting them from a list.
+- **Auto Scaling Group (ASG) Management**:
+    - View all ASGs with their desired, min, and max capacities.
+    - Set the desired capacity for an ASG.
+    - Initiate a rolling instance refresh with real-time status updates.
+- **Credential Management**: Automatically uses existing AWS credentials or prompts for them if not found.
+- **Region Selection**: Easily select the AWS region you want to work in.
 
-> **Note**: This tool does **not** include `apply`, `destroy`, `init`, or `set-secrets` commands, which are associated with Terraform. See [Terraform Integration](#-terraform-integration).
+## Installation
 
-## 📋 Table of Contents
+Follow these steps to get the EC2 & ASG Manager up and running on your local machine.
 
-- [Prerequisites](#-prerequisites)
-- [Installation](#-installation)
-- [Usage](#-usage)
-- [Examples](#-examples)
-- [Permissions](#-permissions)
-- [Terraform Integration](#-terraform-integration)
-- [Project Structure](#-project-structure)
-- [Troubleshooting](#-troubleshooting)
-- [Development](#-development)
-- [License](#-license)
+### Prerequisites
 
-## 📋 Prerequisites
+- Python 3.6 or higher
+- `pip` and `venv`
 
-| Requirement | Description |
-|-------------|-------------|
-| **Python** | 3.6 or higher (`python3 --version`). |
-| **AWS Credentials** | Access Key ID, Secret Access Key, optional Session Token from STS or IAM. |
-| **AWS Permissions** | `sts:GetCallerIdentity`, `ec2:Describe*`, `ec2:RunInstances`, `ec2:CreateTags`, `ec2:ModifyInstanceAttribute`, `ec2:StartInstances`, `ec2:StopInstances`, `ec2:TerminateInstances`, `autoscaling:Describe*`, `autoscaling:UpdateAutoScalingGroup`, `autoscaling:StartInstanceRefresh`, `autoscaling:DescribeInstanceRefreshes`. |
-| **Git** | Optional, for cloning (`sudo apt install git` on Ubuntu). |
-| **pip** | Python package manager. |
+### 1. Clone the Repository
 
-## 📦 Installation
+First, clone this repository to your local machine:
 
-### Option 1: Install via pip
 ```bash
-pip install ec2-manager
+git clone [https://github.com/cullenwerks/ec2_manager.git](https://github.com/cullenwerks/ec2_manager.git)
+cd ec2_manager
+```
+
+### 2. Create a Virtual Environment
+
+It is highly recommended to use a virtual environment to manage dependencies and avoid conflicts with other projects.
+
+```bash
+# Create the virtual environment
+python3 -m venv venv
+
+# Activate it
+source venv/bin/activate
+```
+*(On Windows, use `venv\Scripts\activate`)*
+
+### 3. Install Dependencies
+
+Install all the required packages using the `requirements.txt` file.
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Install the Tool
+
+Install the package in editable mode. This will create the `ec2-manager` command-line script and link it to your source code.
+
+```bash
+pip install -e .
+```
+
+## Usage
+
+Once installed, you can run the tool by simply typing its name in your terminal.
+
+```bash
+ec2-manager
+```
+
+### AWS Credentials
+
+The tool will automatically detect AWS credentials set up via environment variables or the `~/.aws/credentials` file.
+
+If no credentials are found, it will prompt you to enter your **AWS Access Key ID** and **Secret Access Key** manually.
+
+### Navigating the Interface
+
+- Use the **arrow keys** to move up and down in selection menus.
+- Press **Enter** to confirm a selection.
+- Follow the on-screen prompts to manage your resources.
+
+### Example Workflow: Performing a Rolling Refresh
+
+1.  Run `ec2-manager`.
+2.  Select your desired AWS Region.
+3.  From the main menu, choose **"Manage an Auto Scaling Group"**.
+4.  Select the target ASG from the list.
+5.  Choose the **"Perform Rolling Refresh"** action.
+6.  Confirm the action.
+7.  Watch the real-time status updates as the refresh progresses.
+
+```
+$ ec2-manager
+┌──────────────────────────────────────┐
+│ AWS EC2 & ASG Manager v2.0           │
+└──────────────────────────────────────┘
+✅ Logged in as arn:aws:iam::123456789012:user/cullen
+? Select AWS Region: us-east-1
+? What would you like to do?: Manage an Auto Scaling Group
+? Select an Auto Scaling Group: my-production-asg (Running: 5)
+? Choose an action for my-production-asg: Perform Rolling Refresh
+? Start a rolling instance refresh for my-production-asg? Yes
+⠧ Monitoring refresh i-0123456789abcdef0... Refresh status for my-production-asg: InProgress
+```
+
+## Contributing
+
+Contributions are welcome! If you have a suggestion or find a bug, please open an issue or submit a pull request.
+
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/YourFeature`).
+3.  Make your changes.
+4.  Commit your changes (`git commit -m 'Add some feature'`).
+5.  Push to the branch (`git push origin feature/YourFeature`).
+6.  Open a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
