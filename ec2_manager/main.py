@@ -358,7 +358,12 @@ def modify_termination_protection(ec2_client, instance_id):
             )
         current_status = response['DisableApiTermination']['Value']
         
-        console.print(f"Termination protection for {instance_id} is currently: [bold {'green' if current_status else 'red'}]{'Enabled' if current_status else 'Disabled'}[/bold]")
+        if current_status:
+            status_text = "[bold green]Enabled[/bold]"
+        else:
+            status_text = "[bold red]Disabled[/bold]"
+        
+        console.print(f"Termination protection for {instance_id} is currently: {status_text}")
 
         enable = questionary.confirm(
             "Do you want to ENABLE termination protection?",
@@ -648,13 +653,13 @@ def main():
     check_python_version()
     
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.4", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.5", expand=False, border_style="blue"))
 
     session = get_boto_session()
     if not session: sys.exit(1)
 
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.4", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.5", expand=False, border_style="blue"))
     region = select_aws_region(session)
     if not region: sys.exit(1)
 
@@ -665,7 +670,7 @@ def main():
 
     while True:
         console.clear()
-        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.4", expand=False, border_style="blue"))
+        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.5", expand=False, border_style="blue"))
         category = questionary.select(
             "Select a service category to manage:",
             choices=["Compute (EC2 & ASG)", "Load Balancing (ALB/NLB/TG)", "Exit"]
