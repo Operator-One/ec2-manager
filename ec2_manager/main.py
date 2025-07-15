@@ -4,8 +4,7 @@ import json
 import time
 import re
 from botocore.exceptions import ClientError, NoCredentialsError
-from inquirerpy import inquirer
-from inquirerpy.base.control import Choice
+import questionary
 from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import HTML
 
@@ -37,12 +36,14 @@ def prompt_for_credentials():
     return access_key, secret_key, session_token or None, region
 
 def prompt_for_region():
-    """Prompt user for AWS region with validation using inquirerpy."""
-    region = inquirer.select(
-        message="Select AWS region:",
+    """Prompt user for AWS region with validation using questionary."""
+    region = questionary.select(
+        "Select AWS region:",
         choices=VALID_AWS_REGIONS,
         default='us-east-1'
-    ).execute()
+    ).ask()
+    if region is None:
+        sys.exit("Operation cancelled.")
     return region
 
 def validate_aws_credentials(access_key, secret_key, session_token, region):
@@ -167,50 +168,36 @@ def create_ec2_instance(ec2_client):
             Owners=['amazon']
         )
         amis = sorted(response['Images'], key=lambda x: x['CreationDate'], reverse=True)
-        ami_choices = [Choice(ami['ImageId'], name=f"{ami['Name']} ({ami['ImageId']})") for ami in amis[:5]]
-        ami_id = inquirer.select(
-            message="Select AMI:",
-            choices=ami_choices
-        ).execute()
+        ami_choices = [questionary.Choice(f"{ami['Name']} ({ami['ImageId']})", value=ami['ImageId']) for ami in amis[:5]]
+        ami_id = questionary.select("Select AMI:", choices=ami_choices).ask()
+        if ami_id is None: return None
 
         # Fetch instance types
         instance_types = ['t2.micro', 't3.micro', 't3.small', 'm5.large']
-        instance_type = inquirer.select(
-            message="Select instance type:",
-            choices=instance_types,
-            default='t2.micro'
-        ).execute()
+        instance_type = questionary.select("Select instance type:", choices=instance_types, default='t2.micro').ask()
+        if instance_type is None: return None
 
         # Fetch key pairs
         response = ec2_client.describe_key_pairs()
         key_pairs = [kp['KeyName'] for kp in response['KeyPairs']]
         key_pairs.append('None')
-        key_pair = inquirer.select(
-            message="Select key pair (or skip):",
-            choices=key_pairs,
-            default='None'
-        ).execute()
+        key_pair = questionary.select("Select key pair (or skip):", choices=key_pairs, default='None').ask()
+        if key_pair is None: return None
 
         # Fetch security groups
         response = ec2_client.describe_security_groups()
         security_groups = [sg['GroupId'] for sg in response['SecurityGroups']]
-        security_group = inquirer.select(
-            message="Select security group:",
-            choices=security_groups
-        ).execute()
+        security_group = questionary.select("Select security group:", choices=security_groups).ask()
+        if security_group is None: return None
 
         # Fetch subnets
         response = ec2_client.describe_subnets()
         subnets = [subnet['SubnetId'] for subnet in response['Subnets']]
-        subnet_id = inquirer.select(
-            message="Select subnet:",
-            choices=subnets
-        ).execute()
+        subnet_id = questionary.select("Select subnet:", choices=subnets).ask()
+        if subnet_id is None: return None
 
         # Optional Name tag
-        name_tag = inquirer.text(
-            message="Enter instance Name tag (optional, press Enter to skip):"
-        ).execute().strip()
+        name_tag = questionary.text("Enter instance Name tag (optional, press Enter to skip):").ask().strip()
 
         # Create instance
         instance_params = {
@@ -251,22 +238,22 @@ def modify_ec2_instance(ec2_client, instance_id):
             return
         instance = instances[0]
 
-        action = inquirer.select(
-            message=f"Modify instance {instance_id}:",
+        action = questionary.select(
+            f"Modify instance {instance_id}:",
             choices=[
-                Choice("tags", name="Modify Tags"),
-                Choice("security_groups", name="Modify Security Groups"),
-                Choice("return", name="Return")
+                questionary.Choice("Modify Tags", "tags"),
+                questionary.Choice("Modify Security Groups", "security_groups"),
+                questionary.Choice("Return", "return")
             ]
-        ).execute()
+        ).ask()
 
         if action == "tags":
             current_tags = instance['Tags']
             print(f"Current tags: {current_tags}")
-            new_name = inquirer.text(
-                message="Enter new Name tag (press Enter to keep current):",
+            new_name = questionary.text(
+                "Enter new Name tag (press Enter to keep current):",
                 default=current_tags.get('Name', '')
-            ).execute().strip()
+            ).ask().strip()
             if new_name:
                 ec2_client.create_tags(
                     Resources=[instance_id],
@@ -280,15 +267,13 @@ def modify_ec2_instance(ec2_client, instance_id):
             # Fetch available security groups
             response = ec2_client.describe_security_groups()
             security_groups = [sg['GroupId'] for sg in response['SecurityGroups']]
-            new_sg = inquirer.select(
-                message="Select new security group:",
-                choices=security_groups
-            ).execute()
-            ec2_client.modify_instance_attribute(
-                InstanceId=instance_id,
-                SecurityGroups=[new_sg]
-            )
-            print(f"Updated security group for {instance_id} to {new_sg}.")
+            new_sg = questionary.select("Select new security group:", choices=security_groups).ask()
+            if new_sg:
+                ec2_client.modify_instance_attribute(
+                    InstanceId=instance_id,
+                    Groups=[new_sg]
+                )
+                print(f"Updated security group for {instance_id} to {new_sg}.")
 
         elif action == "return":
             print("No modifications made.")
@@ -300,27 +285,27 @@ def control_ec2_instance(ec2_client, asg_client, instance_id):
     asg_name = is_instance_in_asg(asg_client, instance_id)
     if asg_name:
         print(f"Instance {instance_id} is part of Auto Scaling Group '{asg_name}'.")
-        action = inquirer.select(
-            message="Choose action:",
+        action = questionary.select(
+            "Choose action:",
             choices=[
-                Choice("start", name="Start Instance"),
-                Choice("stop", name="Stop Instance"),
-                Choice("refresh", name="Refresh in ASG"),
-                Choice("return", name="Return")
+                questionary.Choice("Start Instance", "start"),
+                questionary.Choice("Stop Instance", "stop"),
+                questionary.Choice("Refresh in ASG", "refresh"),
+                questionary.Choice("Return", "return")
             ]
-        ).execute()
+        ).ask()
     else:
-        action = inquirer.select(
-            message="Choose action:",
+        action = questionary.select(
+            "Choose action:",
             choices=[
-                Choice("start", name="Start Instance"),
-                Choice("stop", name="Stop Instance"),
-                Choice("terminate", name="Terminate Instance"),
-                Choice("return", name="Return")
+                questionary.Choice("Start Instance", "start"),
+                questionary.Choice("Stop Instance", "stop"),
+                questionary.Choice("Terminate Instance", "terminate"),
+                questionary.Choice("Return", "return")
             ]
-        ).execute()
+        ).ask()
     
-    if action == "return":
+    if action == "return" or action is None:
         return None
     
     try:
@@ -335,11 +320,8 @@ def control_ec2_instance(ec2_client, asg_client, instance_id):
             ec2_client.get_waiter('instance_stopped').wait(InstanceIds=[instance_id])
             print(f"Instance {instance_id} is now stopped.")
         elif action == "terminate" and not asg_name:
-            confirm = inquirer.confirm(
-                message=f"Confirm termination of {instance_id}?",
-                default=False
-            ).execute()
-            if confirm:
+            confirmed = questionary.confirm(f"Confirm termination of {instance_id}?", default=False).ask()
+            if confirmed:
                 ec2_client.terminate_instances(InstanceIds=[instance_id])
                 print(f"Terminating instance {instance_id}...")
                 ec2_client.get_waiter('instance_terminated').wait(InstanceIds=[instance_id])
@@ -357,28 +339,32 @@ def control_ec2_instance(ec2_client, asg_client, instance_id):
 def modify_asg_properties(asg_client, asg_name):
     """Modify ASG properties (min/max/desired capacity)."""
     try:
-        min_size = inquirer.number(
-            message="Enter new Min Size:",
-            min_allowed=0,
-            validate=lambda x: x >= 0
-        ).execute()
-        max_size = inquirer.number(
-            message="Enter new Max Size:",
-            min_allowed=min_size,
-            validate=lambda x: x >= min_size
-        ).execute()
-        desired_capacity = inquirer.number(
-            message="Enter new Desired Capacity:",
-            min_allowed=min_size,
-            max_allowed=max_size,
-            validate=lambda x: min_size <= x <= max_size
-        ).execute()
+        min_size_str = questionary.text(
+            "Enter new Min Size:",
+            validate=lambda val: True if val.isdigit() else "Must be a positive integer."
+        ).ask()
+        if min_size_str is None: return
+        min_size = int(min_size_str)
+        
+        max_size_str = questionary.text(
+            "Enter new Max Size:",
+            validate=lambda val: True if val.isdigit() and int(val) >= min_size else f"Must be an integer >= {min_size}."
+        ).ask()
+        if max_size_str is None: return
+        max_size = int(max_size_str)
+
+        desired_capacity_str = questionary.text(
+            "Enter new Desired Capacity:",
+            validate=lambda val: True if val.isdigit() and min_size <= int(val) <= max_size else f"Must be an integer between {min_size} and {max_size}."
+        ).ask()
+        if desired_capacity_str is None: return
+        desired_capacity = int(desired_capacity_str)
         
         asg_client.update_auto_scaling_group(
             AutoScalingGroupName=asg_name,
-            MinSize=int(min_size),
-            MaxSize=int(max_size),
-            DesiredCapacity=int(desired_capacity)
+            MinSize=min_size,
+            MaxSize=max_size,
+            DesiredCapacity=desired_capacity
         )
         print(f"Successfully updated ASG {asg_name} with Min: {min_size}, Max: {max_size}, Desired: {desired_capacity}")
     except (ValueError, ClientError) as e:
@@ -454,94 +440,81 @@ def asg_control_panel(asg_client, preselected_asg=None):
             return
         selected_asg = asgs[0]
     else:
-        action = inquirer.select(
-            message="Auto Scaling Group Menu:",
+        action = questionary.select(
+            "Auto Scaling Group Menu:",
             choices=[
-                Choice("view_all", name="View All ASGs"),
-                Choice("search", name="Search ASG by Name"),
-                Choice("return", name="Return")
+                questionary.Choice("View All ASGs", "view_all"),
+                questionary.Choice("Search ASG by Name", "search"),
+                questionary.Choice("Return", "return")
             ]
-        ).execute()
+        ).ask()
 
         if action == "view_all":
             asgs = fetch_asg_details(asg_client)
             display_asgs(asgs)
             if not asgs:
                 return
-            asg_choices = [Choice(asg['AutoScalingGroupName'], name=f"{asg['AutoScalingGroupName']} (Instances: {len(asg['Instances'])})") for asg in asgs]
-            asg_choices.append(Choice("return", name="Return"))
-            selected_asg_name = inquirer.select(
-                message="Select ASG to modify (or return):",
-                choices=asg_choices
-            ).execute()
-            if selected_asg_name == "return":
+            asg_choices = [questionary.Choice(f"{asg['AutoScalingGroupName']} (Instances: {len(asg['Instances'])})", asg['AutoScalingGroupName']) for asg in asgs]
+            asg_choices.append(questionary.Choice("Return", "return"))
+            selected_asg_name = questionary.select("Select ASG to modify (or return):", choices=asg_choices).ask()
+            if selected_asg_name == "return" or selected_asg_name is None:
                 return
             selected_asg = next(asg for asg in asgs if asg['AutoScalingGroupName'] == selected_asg_name)
 
         elif action == "search":
-            asg_name = inquirer.text(
-                message="Enter ASG name (partial match):"
-            ).execute().strip()
+            asg_name = questionary.text("Enter ASG name (partial match):").ask()
+            if asg_name is None: return
             asgs = fetch_asg_details(asg_client)
             matching_asgs = [asg for asg in asgs if asg_name.lower() in asg['AutoScalingGroupName'].lower()]
             if not matching_asgs:
                 print(f"No ASGs found matching '{asg_name}'.")
                 return
             display_asgs(matching_asgs)
-            asg_choices = [Choice(asg['AutoScalingGroupName'], name=f"{asg['AutoScalingGroupName']} (Instances: {len(asg['Instances'])})") for asg in matching_asgs]
-            asg_choices.append(Choice("return", name="Return"))
-            selected_asg_name = inquirer.select(
-                message="Select ASG to modify (or return):",
-                choices=asg_choices
-            ).execute()
-            if selected_asg_name == "return":
+            asg_choices = [questionary.Choice(f"{asg['AutoScalingGroupName']} (Instances: {len(asg['Instances'])})", asg['AutoScalingGroupName']) for asg in matching_asgs]
+            asg_choices.append(questionary.Choice("Return", "return"))
+            selected_asg_name = questionary.select("Select ASG to modify (or return):", choices=asg_choices).ask()
+            if selected_asg_name == "return" or selected_asg_name is None:
                 return
             selected_asg = next(asg for asg in matching_asgs if asg['AutoScalingGroupName'] == selected_asg_name)
 
-        elif action == "return":
+        elif action == "return" or action is None:
             return
 
     asg_name = selected_asg['AutoScalingGroupName']
     
     while True:
-        action = inquirer.select(
-            message=f"ASG Control Panel: {asg_name}",
+        action = questionary.select(
+            f"ASG Control Panel: {asg_name}",
             choices=[
-                Choice("modify", name="Modify ASG Properties"),
-                Choice("refresh", name="Refresh Instances"),
-                Choice("return", name="Return")
+                questionary.Choice("Modify ASG Properties", "modify"),
+                questionary.Choice("Refresh Instances", "refresh"),
+                questionary.Choice("Return", "return")
             ]
-        ).execute()
+        ).ask()
         
         if action == "modify":
             modify_asg_properties(asg_client, asg_name)
         elif action == "refresh":
             refresh_asg_instance(asg_client, asg_name)
-        elif action == "return":
+        elif action == "return" or action is None:
             break
 
 def refresh_asg_menu(asg_client):
     """Menu to search for an ASG and initiate an instance refresh."""
-    asg_name = inquirer.text(
-        message="Enter ASG name (partial match):"
-    ).execute().strip()
+    asg_name = questionary.text("Enter ASG name (partial match):").ask()
+    if asg_name is None: return
     asgs = fetch_asg_details(asg_client)
     matching_asgs = [asg for asg in asgs if asg_name.lower() in asg['AutoScalingGroupName'].lower()]
     if not matching_asgs:
         print(f"No ASGs found matching '{asg_name}'.")
         return
     
-    asg_choices = [Choice(asg['AutoScalingGroupName'], name=f"{asg['AutoScalingGroupName']} (Instances: {len(asg['Instances'])})") for asg in matching_asgs]
-    selected_asg_name = inquirer.select(
-        message="Select ASG to refresh:",
-        choices=asg_choices
-    ).execute()
+    asg_choices = [questionary.Choice(f"{asg['AutoScalingGroupName']} (Instances: {len(asg['Instances'])})", asg['AutoScalingGroupName']) for asg in matching_asgs]
+    selected_asg_name = questionary.select("Select ASG to refresh:", choices=asg_choices).ask()
+    if selected_asg_name is None: return
     
-    confirm = inquirer.confirm(
-        message=f"Start instance refresh for ASG {selected_asg_name}?",
-        default=True
-    ).execute()
-    if confirm:
+    confirmed = questionary.confirm(f"Start instance refresh for ASG {selected_asg_name}?", default=True).ask()
+    if confirmed:
         refresh_asg_instance(asg_client, selected_asg_name)
     else:
         print("Refresh cancelled.")
@@ -572,19 +545,19 @@ def main():
     asg_client = boto3_session.client('autoscaling')
     
     while True:
-        action = inquirer.select(
-            message="EC2 Manager CLI",
+        action = questionary.select(
+            "EC2 Manager CLI",
             choices=[
-                Choice("view_running", name="View All Running Instances"),
-                Choice("search_running", name="Search Running Instances"),
-                Choice("create_ec2", name="Create EC2 Instance"),
-                Choice("modify_ec2", name="Modify EC2 Instance"),
-                Choice("modify_state", name="Modify Instance State"),
-                Choice("auto_scaling", name="Auto Scaling"),
-                Choice("refresh_asg", name="Refresh Instances"),
-                Choice("exit", name="Exit")
+                questionary.Choice("View All Running Instances", "view_running"),
+                questionary.Choice("Search Running Instances", "search_running"),
+                questionary.Choice("Create EC2 Instance", "create_ec2"),
+                questionary.Choice("Modify EC2 Instance", "modify_ec2"),
+                questionary.Choice("Modify Instance State", "modify_state"),
+                questionary.Choice("Auto Scaling", "auto_scaling"),
+                questionary.Choice("Refresh Instances", "refresh_asg"),
+                questionary.Choice("Exit", "exit")
             ]
-        ).execute()
+        ).ask()
         
         if action == "view_running":
             print("\nFetching all running EC2 instances...")
@@ -592,32 +565,36 @@ def main():
             display_instances(instances)
         
         elif action == "search_running":
-            search_by = inquirer.select(
-                message="Search by:",
+            search_by = questionary.select(
+                "Search by:",
                 choices=[
-                    Choice("tag:Name", name="Name Tag"),
-                    Choice("private-ip-address", name="Private IP Address")
+                    questionary.Choice("Name Tag", "tag:Name"),
+                    questionary.Choice("Private IP Address", "private-ip-address")
                 ]
-            ).execute()
-            search_term = inquirer.text(
-                message=f"Enter {search_by.replace('tag:', '')} (partial match):"
-            ).execute().strip()
+            ).ask()
+            if search_by is None: continue
+
+            search_term = questionary.text(f"Enter {search_by.replace('tag:', '')} (partial match):").ask()
+            if search_term is None: continue
+            
             print(f"\nSearching for running instances matching '{search_term}'...")
-            instances = search_ec2_instances(ec2_client, search_term, search_by)
+            instances = search_ec2_instances(ec2_client, search_term.strip(), search_by)
             display_instances(instances)
         
         elif action == "create_ec2":
             create_ec2_instance(ec2_client)
         
         elif action == "modify_ec2":
-            instance_id = inquirer.text(message="Enter EC2 Instance ID:").execute().strip()
-            modify_ec2_instance(ec2_client, instance_id)
+            instance_id = questionary.text("Enter EC2 Instance ID:").ask()
+            if instance_id:
+                modify_ec2_instance(ec2_client, instance_id.strip())
         
         elif action == "modify_state":
-            instance_id = inquirer.text(message="Enter EC2 Instance ID:").execute().strip()
-            asg_name = control_ec2_instance(ec2_client, asg_client, instance_id)
-            if asg_name:
-                asg_control_panel(asg_client, preselected_asg=asg_name)
+            instance_id = questionary.text("Enter EC2 Instance ID:").ask()
+            if instance_id:
+                asg_name = control_ec2_instance(ec2_client, asg_client, instance_id.strip())
+                if asg_name:
+                    asg_control_panel(asg_client, preselected_asg=asg_name)
         
         elif action == "auto_scaling":
             asg_control_panel(asg_client)
@@ -625,7 +602,7 @@ def main():
         elif action == "refresh_asg":
             refresh_asg_menu(asg_client)
         
-        elif action == "exit":
+        elif action == "exit" or action is None:
             print("Exiting...")
             break
 
