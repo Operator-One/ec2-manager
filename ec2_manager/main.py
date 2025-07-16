@@ -10,10 +10,10 @@ from rich.live import Live
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 from rich.text import Text
 
-# --- Initialize Console ---
+# === Initialize Console ===
 console = Console()
 
-# --- Region Descriptions ---
+# === Region Descriptions ===
 REGION_DESCRIPTIONS = {
     "us-east-1": "US East (N. Virginia)",
     "us-east-2": "US East (Ohio)",
@@ -41,7 +41,7 @@ REGION_DESCRIPTIONS = {
 }
 
 
-# --- Main Application Logic ---
+# === Main Application Logic ===
 
 def check_python_version():
     """Ensure Python version is 3.6 or higher."""
@@ -92,7 +92,7 @@ def select_aws_region(session):
         console.print(f"[bold red]Could not fetch public AWS regions: {e}[/bold red]")
         return questionary.text("Enter your custom region code:", validate=lambda t: len(t.strip()) > 0).ask()
 
-# --- Generic Helper Functions ---
+# === Generic Helper Functions ===
 
 def fetch_data(client, method_name, resource_key, message="Fetching data...", params=None):
     """Generic fetcher with a spinner that supports filters and pagination."""
@@ -146,7 +146,7 @@ def select_instance(ec2_client, state='*'):
 
     return questionary.select("Select an instance:", choices=choices, use_indicator=True).ask()
 
-# --- Display Functions ---
+# === Display Functions ===
 def display_instances(instances):
     """Display EC2 instances in a rich table."""
     if not instances:
@@ -216,7 +216,7 @@ def display_target_groups(tgs):
         )
     console.print(table)
 
-# --- EC2 Management ---
+# === EC2 Management ===
 def create_ec2_instance(ec2_client):
     """A guided workflow to create a new EC2 instance."""
     console.clear()
@@ -430,7 +430,7 @@ def modify_termination_protection(ec2_client, instance_id):
         console.print(Panel(f"[bold red]An AWS API error occurred:[/bold red]\n\n{e}", title="[bold red]Operation Failed[/bold red]", expand=False))
         questionary.press_any_key_to_continue().ask()
 
-# --- Generic Search ---
+# === Generic Search ===
 def search_resources_by_tag(client, resource_type):
     """
     Generic function to search for resources by a specific tag.
@@ -504,7 +504,7 @@ def manage_ec2(ec2_client):
                 manage_single_instance(ec2_client, instance_id)
 
 
-# --- ASG Management ---
+# === ASG Management ===
 def view_asg_instances(asg_client, ec2_client, asg_name):
     """View the instances attached to a specific Auto Scaling Group."""
     console.print(f"Fetching instances for ASG: [bold cyan]{asg_name}[/bold cyan]")
@@ -684,7 +684,7 @@ def perform_asg_refresh(asg_client, asg_name):
     
     questionary.press_any_key_to_continue().ask()
 
-# --- Load Balancer & Target Group Management ---
+# === Load Balancer & Target Group Management ===
 def manage_load_balancing(elbv2_client):
     """Main menu for Load Balancing services."""
     while True:
@@ -711,7 +711,7 @@ def manage_target_groups(elbv2_client):
         elif action == "Search Target Groups by Tag":
             search_resources_by_tag(elbv2_client, 'TG')
 
-# --- Main Loop ---
+# === Main Loop ===
 def main():
     """Main function to run the CLI tool."""
     check_python_version()
