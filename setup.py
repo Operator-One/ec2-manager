@@ -2,13 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name="ec2-manager",
-    version="2.0.0",
+    version="5.0.0",
     description="A CLI tool to manage and view AWS EC2 instances and Auto Scaling Groups",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     author="Cullen Guimond",
     author_email="cullen.guimond@proton.me",
-    url="https://github.com/cullenwerks/ec2_manager",
+    url="https://github.com/Operator-One/ec2_manager",
     packages=find_packages(),
     install_requires=[
         "boto3>=1.34.0",
