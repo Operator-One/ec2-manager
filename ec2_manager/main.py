@@ -717,14 +717,14 @@ def main():
     check_python_version()
 
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.8.0", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]EC2 Manager[/bold magenta] v5.0.0", expand=False, border_style="blue"))
 
     session = get_boto_session()
     if not session:
         sys.exit(1)
 
     console.clear()
-    console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.8.0", expand=False, border_style="blue"))
+    console.print(Panel("[bold magenta]EC2 Manager[/bold magenta] v5.0.0", expand=False, border_style="blue"))
     region = select_aws_region(session)
     if not region:
         sys.exit(1)
@@ -736,7 +736,7 @@ def main():
 
     while True:
         console.clear()
-        console.print(Panel("[bold magenta]AWS Resource Manager[/bold magenta] v4.8.0", expand=False, border_style="blue"))
+        console.print(Panel("[bold magenta]EC2 Manager[/bold magenta] v5.0.0", expand=False, border_style="blue"))
         category = questionary.select(
             "Select a service category to manage:",
             choices=["Compute (EC2 & ASG)", "Load Balancing (ALB/NLB/TG)", "Exit"]
