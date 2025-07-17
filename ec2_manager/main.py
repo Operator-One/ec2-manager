@@ -13,7 +13,7 @@ from rich.text import Text
 # === Initialize Console ===
 console = Console()
 
-# === Region Descriptions ===
+# === Region Descriptions (Classified regions can be entered here or in-app custom menu ==
 REGION_DESCRIPTIONS = {
     "us-east-1": "US East (N. Virginia)",
     "us-east-2": "US East (Ohio)",
@@ -41,7 +41,7 @@ REGION_DESCRIPTIONS = {
 }
 
 
-# === Main Application Logic ===
+# === Boto3 Main App/API Logic ===
 
 def check_python_version():
     """Ensure Python version is 3.6 or higher."""
@@ -92,7 +92,7 @@ def select_aws_region(session):
         console.print(f"[bold red]Could not fetch public AWS regions: {e}[/bold red]")
         return questionary.text("Enter your custom region code:", validate=lambda t: len(t.strip()) > 0).ask()
 
-# === Generic Helper Functions ===
+# === Data Fetcher/Name-Tag/Select Instance Logic ===
 
 def fetch_data(client, method_name, resource_key, message="Fetching data...", params=None):
     """Generic fetcher with a spinner that supports filters and pagination."""
@@ -430,7 +430,7 @@ def modify_termination_protection(ec2_client, instance_id):
         console.print(Panel(f"[bold red]An AWS API error occurred:[/bold red]\n\n{e}", title="[bold red]Operation Failed[/bold red]", expand=False))
         questionary.press_any_key_to_continue().ask()
 
-# === Generic Search ===
+# === Tag Filtered Search ===
 def search_resources_by_tag(client, resource_type):
     """
     Generic function to search for resources by a specific tag.
