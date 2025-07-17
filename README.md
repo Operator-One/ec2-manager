@@ -1,4 +1,4 @@
-# AWS Resource Manager (ec2-manager)
+## EC2 Manager
 
 A Command-Line Interface (CLI) tool designed to simplify the management of AWS resources, including EC2 instances, Auto Scaling Groups (ASGs), and Load Balancer Target Groups. Built with Python, `boto3`, and the `rich` and `questionary` libraries for a modern and interactive user experience.
 
