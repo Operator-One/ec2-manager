@@ -24,7 +24,7 @@ A Command-Line Interface (CLI) tool designed to simplify the management of AWS r
 
 ## ⚙️ Installation
 
-[cite_start]Ensure you have Python 3.6+ installed[cite: 3].
+Ensure you have Python 3.6+ installed.
 
 1.  **Clone the repository:**
     ```bash
